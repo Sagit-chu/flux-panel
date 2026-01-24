@@ -209,56 +209,93 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
     }
 
     @Override
+    @Transactional
     public R updateForward(ForwardUpdateDto forwardUpdateDto) {
-        // 1. 获取当前用户信息
         UserInfo currentUser = getCurrentUserInfo();
 
-
-        // 2. 检查转发是否存在
         Forward existForward = validateForwardExists(forwardUpdateDto.getId(), currentUser);
         if (existForward == null) {
             return R.err("转发不存在");
         }
 
+        Integer oldTunnelId = existForward.getTunnelId();
+        Integer newTunnelId = forwardUpdateDto.getTunnelId() != null ? forwardUpdateDto.getTunnelId() : oldTunnelId;
+        boolean tunnelChanged = !Objects.equals(oldTunnelId, newTunnelId);
 
-        Tunnel tunnel = validateTunnel(existForward.getTunnelId());
-        if (tunnel == null) {
-            return R.err("隧道不存在");
+        Tunnel oldTunnel = validateTunnel(oldTunnelId);
+        if (oldTunnel == null) {
+            return R.err("原隧道不存在");
         }
 
-        UserPermissionResult permissionResult = checkUserPermissions(currentUser, tunnel, null);
-        if (permissionResult.isHasError()) {
-            return R.err(permissionResult.getErrorMessage());
-        }
-
-        UserTunnel userTunnel;
+        UserTunnel oldUserTunnel;
         if (currentUser.getRoleId() != 0) {
-            userTunnel = getUserTunnel(currentUser.getUserId(), tunnel.getId().intValue());
-            if (userTunnel == null) {
-                return R.err("你没有该隧道权限");
+            oldUserTunnel = getUserTunnel(currentUser.getUserId(), oldTunnelId);
+            if (oldUserTunnel == null) {
+                return R.err("你没有原隧道权限");
             }
         } else {
-            // 管理员用户也需要获取UserTunnel（如果存在的话），用于构建正确的服务名称
-            // 通过forward记录获取原始的用户ID
-            userTunnel = getUserTunnel(existForward.getUserId(), tunnel.getId().intValue());
+            oldUserTunnel = getUserTunnel(existForward.getUserId(), oldTunnelId);
+        }
+
+        if (tunnelChanged) {
+            Tunnel newTunnel = validateTunnel(newTunnelId);
+            if (newTunnel == null) {
+                return R.err("新隧道不存在");
+            }
+            if (newTunnel.getStatus() != 1) {
+                return R.err("新隧道已禁用，无法切换");
+            }
+
+            UserPermissionResult newPermResult = checkUserPermissions(currentUser, newTunnel, null);
+            if (newPermResult.isHasError()) {
+                return R.err(newPermResult.getErrorMessage());
+            }
+
+            UserTunnel newUserTunnel;
+            if (currentUser.getRoleId() != 0) {
+                newUserTunnel = getUserTunnel(currentUser.getUserId(), newTunnelId);
+                if (newUserTunnel == null) {
+                    return R.err("你没有新隧道权限");
+                }
+            } else {
+                newUserTunnel = getUserTunnel(existForward.getUserId(), newTunnelId);
+            }
+
+            releaseOldTunnelResources(existForward, oldTunnel, oldUserTunnel);
+
+            existForward.setTunnelId(newTunnelId);
+            existForward.setRemoteAddr(forwardUpdateDto.getRemoteAddr());
+            existForward.setName(forwardUpdateDto.getName());
+            existForward.setStrategy(forwardUpdateDto.getStrategy());
+            existForward.setStatus(1);
+            existForward.setUpdatedTime(System.currentTimeMillis());
+            this.updateById(existForward);
+
+            R allocResult = allocateNewTunnelResources(existForward, newTunnel, forwardUpdateDto.getInPort(), newPermResult, newUserTunnel);
+            if (allocResult.getCode() != 0) {
+                throw new RuntimeException(allocResult.getMsg());
+            }
+
+            return R.ok();
+        }
+
+        UserPermissionResult permissionResult = checkUserPermissions(currentUser, oldTunnel, null);
+        if (permissionResult.isHasError()) {
+            return R.err(permissionResult.getErrorMessage());
         }
 
         existForward.setRemoteAddr(forwardUpdateDto.getRemoteAddr());
         existForward.setName(forwardUpdateDto.getName());
         existForward.setStrategy(forwardUpdateDto.getStrategy());
         existForward.setStatus(1);
+        existForward.setUpdatedTime(System.currentTimeMillis());
         this.updateById(existForward);
 
-
-        List<ChainTunnel> chainTunnels = chainTunnelService.list(new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnel.getId()).eq("chain_type", 1));
-
-        // 自己占用的应该不算
+        List<ChainTunnel> chainTunnels = chainTunnelService.list(new QueryWrapper<ChainTunnel>().eq("tunnel_id", oldTunnel.getId()).eq("chain_type", 1));
         chainTunnels = get_port(chainTunnels, forwardUpdateDto.getInPort(), existForward.getId());
 
-
-
         for (ChainTunnel chainTunnel : chainTunnels) {
-            String serviceName = buildServiceName(existForward.getId(), existForward.getUserId(), userTunnel);
+            String serviceName = buildServiceName(existForward.getId(), existForward.getUserId(), oldUserTunnel);
             Integer limiter = permissionResult.getLimiter();
             Node node = nodeService.getById(chainTunnel.getNodeId());
             if (node == null) {
@@ -270,11 +307,87 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
             }
             forwardPort.setPort(chainTunnel.getPort());
             forwardPortService.updateById(forwardPort);
-            GostDto gostDto = GostUtil.AddAndUpdateService(serviceName, limiter, node, existForward, forwardPort, tunnel, "UpdateService");
+            GostDto gostDto = GostUtil.AddAndUpdateService(serviceName, limiter, node, existForward, forwardPort, oldTunnel, "UpdateService");
             if (!Objects.equals(gostDto.getMsg(), "OK")) return R.err(gostDto.getMsg());
         }
 
         return R.ok();
+    }
+
+    private void releaseOldTunnelResources(Forward forward, Tunnel oldTunnel, UserTunnel oldUserTunnel) {
+        List<ChainTunnel> oldInNodes = chainTunnelService.list(
+                new QueryWrapper<ChainTunnel>()
+                        .eq("tunnel_id", oldTunnel.getId())
+                        .eq("chain_type", 1)
+        );
+
+        for (ChainTunnel chainTunnel : oldInNodes) {
+            String serviceName = buildServiceName(forward.getId(), forward.getUserId(), oldUserTunnel);
+            Node node = nodeService.getById(chainTunnel.getNodeId());
+            if (node != null) {
+                JSONArray services = new JSONArray();
+                services.add(serviceName + "_tcp");
+                services.add(serviceName + "_udp");
+                GostUtil.DeleteService(node.getId(), services);
+            }
+        }
+
+        forwardPortService.remove(new QueryWrapper<ForwardPort>().eq("forward_id", forward.getId()));
+    }
+
+    private R allocateNewTunnelResources(Forward forward, Tunnel newTunnel, Integer requestedPort,
+                                         UserPermissionResult permResult, UserTunnel newUserTunnel) {
+        List<ChainTunnel> newInNodes = chainTunnelService.list(
+                new QueryWrapper<ChainTunnel>()
+                        .eq("tunnel_id", newTunnel.getId())
+                        .eq("chain_type", 1)
+        );
+
+        newInNodes = get_port(newInNodes, requestedPort, forward.getId());
+
+        List<JSONObject> successServices = new ArrayList<>();
+
+        for (ChainTunnel chainTunnel : newInNodes) {
+            ForwardPort forwardPort = new ForwardPort();
+            forwardPort.setForwardId(forward.getId());
+            forwardPort.setNodeId(chainTunnel.getNodeId());
+            forwardPort.setPort(chainTunnel.getPort());
+            forwardPortService.save(forwardPort);
+
+            String serviceName = buildServiceName(forward.getId(), forward.getUserId(), newUserTunnel);
+            Integer limiter = permResult.getLimiter();
+            Node node = nodeService.getById(chainTunnel.getNodeId());
+
+            if (node == null) {
+                rollbackCreatedServices(successServices);
+                forwardPortService.remove(new QueryWrapper<ForwardPort>().eq("forward_id", forward.getId()));
+                return R.err("新隧道部分节点不存在");
+            }
+
+            GostDto gostDto = GostUtil.AddAndUpdateService(serviceName, limiter, node, forward, forwardPort, newTunnel, "AddService");
+
+            if (!Objects.equals(gostDto.getMsg(), "OK")) {
+                rollbackCreatedServices(successServices);
+                forwardPortService.remove(new QueryWrapper<ForwardPort>().eq("forward_id", forward.getId()));
+                return R.err("在新隧道创建服务失败: " + gostDto.getMsg());
+            }
+
+            JSONObject data = new JSONObject();
+            data.put("node_id", node.getId());
+            data.put("name", serviceName);
+            successServices.add(data);
+        }
+
+        return R.ok();
+    }
+
+    private void rollbackCreatedServices(List<JSONObject> created) {
+        for (JSONObject jsonObject : created) {
+            JSONArray se = new JSONArray();
+            se.add(jsonObject.getString("name") + "_tcp");
+            se.add(jsonObject.getString("name") + "_udp");
+            GostUtil.DeleteService(jsonObject.getLong("node_id"), se);
+        }
     }
 
     @Override

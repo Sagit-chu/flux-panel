@@ -1606,8 +1606,7 @@ export default function ForwardPage() {
                       isInvalid={!!errors.tunnelId}
                       errorMessage={errors.tunnelId}
                       variant="bordered"
-                      isDisabled={isEdit}
-                      description={isEdit ? "编辑时无法修改关联隧道" : undefined}
+                      description={isEdit ? "更改隧道将释放原端口并在新隧道分配端口" : undefined}
                     >
                       {tunnels.map((tunnel) => (
                         <SelectItem key={tunnel.id} >

@@ -4,7 +4,7 @@ export type SiteConfig = typeof siteConfig;
 
 // 缓存相关常量
 const CACHE_PREFIX = 'vite_config_';
-const VERSION = "2.0.7-beta";
+const VERSION = "2.0.9";
 const APP_VERSION = "1.0.3";
 const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || "https://github.com/Sagit-chu/flux-panel";
 
