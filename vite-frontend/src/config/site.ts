@@ -6,6 +6,7 @@ export type SiteConfig = typeof siteConfig;
 const CACHE_PREFIX = 'vite_config_';
 const VERSION = "2.0.7-beta";
 const APP_VERSION = "1.0.3";
+const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || "https://github.com/Sagit-chu/flux-panel";
 
 const getInitialConfig = () => {
   if (typeof window === 'undefined') {
@@ -13,6 +14,7 @@ const getInitialConfig = () => {
       name: "flux",
       version: VERSION,
       app_version: APP_VERSION,
+      github_repo: GITHUB_REPO,
     };
   }
 
@@ -22,6 +24,7 @@ const getInitialConfig = () => {
         name: cachedAppName,
         version: VERSION,
         app_version: APP_VERSION,
+        github_repo: GITHUB_REPO,
       };
     }
   return {
