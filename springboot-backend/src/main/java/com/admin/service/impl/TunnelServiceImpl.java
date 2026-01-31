@@ -18,6 +18,7 @@ import lombok.Data;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.util.*;
@@ -252,7 +253,7 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
 
     @Override
     public R getAllTunnels() {
-        List<Tunnel> tunnelList = this.list();
+        List<Tunnel> tunnelList = this.list(new QueryWrapper<Tunnel>().orderByAsc("inx").orderByAsc("id"));
         
         // 查询所有隧道的ChainTunnel信息
         List<Long> tunnelIds = tunnelList.stream()
@@ -315,6 +316,34 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
                 .collect(Collectors.toList());
         
         return R.ok(detailDtoList);
+    }
+
+    @Override
+    @Transactional
+    public R updateTunnelOrder(Map<String, Object> params) {
+        if (!params.containsKey("tunnels")) {
+            return R.err("缺少tunnels参数");
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> tunnelsList = (List<Map<String, Object>>) params.get("tunnels");
+        if (tunnelsList == null || tunnelsList.isEmpty()) {
+            return R.err("tunnels参数不能为空");
+        }
+
+        List<Tunnel> tunnelsToUpdate = new ArrayList<>();
+        for (Map<String, Object> tunnelData : tunnelsList) {
+            Long id = Long.valueOf(tunnelData.get("id").toString());
+            Integer inx = Integer.valueOf(tunnelData.get("inx").toString());
+
+            Tunnel tunnel = new Tunnel();
+            tunnel.setId(id);
+            tunnel.setInx(inx);
+            tunnelsToUpdate.add(tunnel);
+        }
+
+        this.updateBatchById(tunnelsToUpdate);
+        return R.ok();
     }
 
 

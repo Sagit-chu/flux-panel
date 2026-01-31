@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -31,6 +32,7 @@ import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Slf4j
@@ -70,9 +72,37 @@ public class NodeServiceImpl extends ServiceImpl<NodeMapper, Node> implements No
 
     @Override
     public R getAllNodes() {
-        List<Node> nodeList = this.list(new QueryWrapper<Node>().orderByDesc("status"));
+        List<Node> nodeList = this.list(new QueryWrapper<Node>().orderByAsc("inx").orderByAsc("id"));
         nodeList.forEach(node -> node.setSecret(null));
         return R.ok(nodeList);
+    }
+
+    @Override
+    @Transactional
+    public R updateNodeOrder(Map<String, Object> params) {
+        if (!params.containsKey("nodes")) {
+            return R.err("缺少nodes参数");
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> nodesList = (List<Map<String, Object>>) params.get("nodes");
+        if (nodesList == null || nodesList.isEmpty()) {
+            return R.err("nodes参数不能为空");
+        }
+
+        List<Node> nodesToUpdate = new ArrayList<>();
+        for (Map<String, Object> nodeData : nodesList) {
+            Long id = Long.valueOf(nodeData.get("id").toString());
+            Integer inx = Integer.valueOf(nodeData.get("inx").toString());
+
+            Node node = new Node();
+            node.setId(id);
+            node.setInx(inx);
+            nodesToUpdate.add(node);
+        }
+
+        this.updateBatchById(nodesToUpdate);
+        return R.ok();
     }
 
     @Override
@@ -347,7 +377,7 @@ public class NodeServiceImpl extends ServiceImpl<NodeMapper, Node> implements No
         ViteConfig viteConfig = viteConfigService.getOne(new QueryWrapper<ViteConfig>().eq("name", "ip"));
         if (viteConfig == null) return R.err("请先前往网站配置中设置ip");
         StringBuilder command = new StringBuilder();
-        command.append("curl -L https://github.com/bqlpfy/flux-panel/releases/download/2.0.7-beta/install.sh")
+        command.append("curl -L https://github.com/Sagit-chu/flux-panel/releases/latest/download/install.sh")
                 .append(" -o ./install.sh && chmod +x ./install.sh && ");
         String processedServerAddr = GostUtil.processServerAddress(viteConfig.getValue());
         command.append("./install.sh")

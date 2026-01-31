@@ -62,4 +62,16 @@ public class NodeController extends BaseController {
         return nodeService.getInstallCommand(id);
     }
 
+    /**
+     * 更新节点排序
+     * @param params 包含nodes数组的参数，每个元素包含id和inx
+     * @return 更新结果
+     */
+    @LogAnnotation
+    @RequireRole
+    @PostMapping("/update-order")
+    public R updateNodeOrder(@RequestBody Map<String, Object> params) {
+        return nodeService.updateNodeOrder(params);
+    }
+
 }

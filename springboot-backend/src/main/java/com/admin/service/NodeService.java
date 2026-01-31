@@ -6,6 +6,8 @@ import com.admin.common.lang.R;
 import com.admin.entity.Node;
 import com.baomidou.mybatisplus.extension.service.IService;
 
+import java.util.Map;
+
 /**
  * <p>
  *  服务类
@@ -25,5 +27,11 @@ public interface NodeService extends IService<Node> {
     R deleteNode(Long id);
 
     R getInstallCommand(Long id);
+
+    /**
+     * 更新节点排序（管理员）
+     * @param params 包含nodes数组的参数，每个元素包含id和inx
+     */
+    R updateNodeOrder(Map<String, Object> params);
 
 }

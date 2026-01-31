@@ -137,4 +137,16 @@ public class TunnelController extends BaseController {
         return tunnelService.diagnoseTunnel(tunnelId);
     }
 
+    /**
+     * 更新隧道排序
+     * @param params 包含tunnels数组的参数，每个元素包含id和inx
+     * @return 更新结果
+     */
+    @LogAnnotation
+    @RequireRole
+    @PostMapping("/update-order")
+    public R updateTunnelOrder(@RequestBody Map<String, Object> params) {
+        return tunnelService.updateTunnelOrder(params);
+    }
+
 }

@@ -7,6 +7,8 @@ import com.admin.common.lang.R;
 import com.admin.entity.Tunnel;
 import com.baomidou.mybatisplus.extension.service.IService;
 
+import java.util.Map;
+
 /**
  * <p>
  * 隧道服务类
@@ -56,4 +58,10 @@ public interface TunnelService extends IService<Tunnel> {
      * @return 诊断结果
      */
     R diagnoseTunnel(Long tunnelId);
+
+    /**
+     * 更新隧道排序（管理员）
+     * @param params 包含tunnels数组的参数，每个元素包含id和inx
+     */
+    R updateTunnelOrder(Map<String, Object> params);
 }
