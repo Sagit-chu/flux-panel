@@ -12,22 +12,28 @@ import com.admin.entity.*;
 import com.admin.mapper.NodeMapper;
 import com.admin.mapper.TunnelMapper;
 import com.admin.service.*;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
 
 @Service
+@Slf4j
 public class NodeServiceImpl extends ServiceImpl<NodeMapper, Node> implements NodeService {
 
 
@@ -40,6 +46,9 @@ public class NodeServiceImpl extends ServiceImpl<NodeMapper, Node> implements No
 
     @Resource
     ChainTunnelService chainTunnelService;
+
+    @Resource
+    ForwardPortService forwardPortService;
 
 
     @Override
@@ -108,12 +117,224 @@ public class NodeServiceImpl extends ServiceImpl<NodeMapper, Node> implements No
             return R.err("节点不存在");
         }
 
-        List<ChainTunnel> list = chainTunnelService.list(new QueryWrapper<ChainTunnel>().eq("node_id", id).groupBy("tunnel_id"));
-        for (ChainTunnel tunnel : list) {
-            tunnelService.deleteTunnel(tunnel.getTunnelId());
+        List<ChainTunnel> affected = chainTunnelService.list(new QueryWrapper<ChainTunnel>().eq("node_id", id));
+        Map<Long, List<ChainTunnel>> byTunnelId = affected.stream()
+                .filter(ct -> ct.getTunnelId() != null)
+                .collect(Collectors.groupingBy(ChainTunnel::getTunnelId));
+
+        for (Map.Entry<Long, List<ChainTunnel>> entry : byTunnelId.entrySet()) {
+            Long tunnelId = entry.getKey();
+            Tunnel tunnel = tunnelService.getById(tunnelId);
+
+            List<ChainTunnel> before = chainTunnelService.list(new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnelId));
+
+            // Remove the node from the tunnel definition (do NOT delete the tunnel).
+            chainTunnelService.remove(new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnelId).eq("node_id", id));
+
+            if (tunnel == null) {
+                continue;
+            }
+
+            List<ChainTunnel> after = chainTunnelService.list(new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnelId));
+            Integer removedChainType = entry.getValue().isEmpty() ? null : entry.getValue().get(0).getChainType();
+
+            // Keep tunnel.inIp consistent when it was auto-derived from entry nodes.
+            String oldDerivedInIp = buildDerivedInIp(before);
+            String newDerivedInIp = buildDerivedInIp(after);
+            if (shouldUpdateTunnelInIp(tunnel.getInIp(), oldDerivedInIp)) {
+                updateTunnelInIp(tunnelId, newDerivedInIp);
+            }
+
+            boolean valid = isTunnelConfigValid(tunnel, after);
+            if (!valid) {
+                disableTunnelAndCleanupGostIfNeeded(tunnel, after, "node-delete");
+                continue;
+            }
+
+            // For tunnel-forwarding (type=2), removing a chain/out node requires rebuilding config.
+            // Removing an entry node (chainType=1) does not affect remaining nodes' chain targets.
+            if (tunnel.getType() != null && tunnel.getType() == 2 && removedChainType != null && removedChainType != 1) {
+                try {
+                    cleanupGostConfig(after, tunnelId);
+                    rebuildGostConfig(after, tunnel);
+                } catch (Exception e) {
+                    log.warn("Failed to rebuild gost config after node delete. tunnelId={}, nodeId={}, err={}", tunnelId, id, e.getMessage(), e);
+                    disableTunnelAndCleanupGostIfNeeded(tunnel, after, "node-delete:rebuild-failed");
+                }
+            }
         }
+
+        // Remove per-forward port allocations on this node (avoid orphan ForwardPort rows).
+        try {
+            forwardPortService.remove(new QueryWrapper<ForwardPort>().eq("node_id", id));
+        } catch (Exception e) {
+            log.warn("Failed to cleanup forward ports when deleting node. nodeId={}, err={}", id, e.getMessage(), e);
+        }
+
         this.removeById(id);
         return R.ok();
+    }
+
+    private boolean isTunnelConfigValid(Tunnel tunnel, List<ChainTunnel> chainTunnels) {
+        if (tunnel == null || chainTunnels == null) {
+            return false;
+        }
+
+        long inCount = chainTunnels.stream()
+                .filter(ct -> ct.getChainType() != null && ct.getChainType() == 1)
+                .count();
+        if (inCount <= 0) {
+            return false;
+        }
+
+        if (tunnel.getType() != null && tunnel.getType() == 2) {
+            long outCount = chainTunnels.stream()
+                    .filter(ct -> ct.getChainType() != null && ct.getChainType() == 3)
+                    .count();
+            return outCount > 0;
+        }
+
+        return true;
+    }
+
+    private boolean shouldUpdateTunnelInIp(String currentInIp, String oldDerivedInIp) {
+        if (StrUtil.isBlank(currentInIp)) {
+            return true;
+        }
+        if (oldDerivedInIp == null) {
+            return false;
+        }
+        return Objects.equals(currentInIp, oldDerivedInIp);
+    }
+
+    private void updateTunnelInIp(Long tunnelId, String derivedInIp) {
+        Tunnel update = new Tunnel();
+        update.setId(tunnelId);
+        update.setInIp(derivedInIp == null ? "" : derivedInIp);
+        update.setUpdatedTime(System.currentTimeMillis());
+        tunnelService.updateById(update);
+    }
+
+    private String buildDerivedInIp(List<ChainTunnel> chainTunnels) {
+        if (chainTunnels == null) {
+            return "";
+        }
+        List<ChainTunnel> inNodes = chainTunnels.stream()
+                .filter(ct -> ct.getChainType() != null && ct.getChainType() == 1)
+                .collect(Collectors.toList());
+        if (inNodes.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder inIp = new StringBuilder();
+        for (ChainTunnel inNode : inNodes) {
+            Node n = this.getById(inNode.getNodeId());
+            if (n == null || StrUtil.isBlank(n.getServerIp())) {
+                return null;
+            }
+            inIp.append(n.getServerIp()).append(",");
+        }
+        inIp.deleteCharAt(inIp.length() - 1);
+        return inIp.toString();
+    }
+
+    private void disableTunnelAndCleanupGostIfNeeded(Tunnel tunnel, List<ChainTunnel> remaining, String reason) {
+        try {
+            Tunnel update = new Tunnel();
+            update.setId(tunnel.getId());
+            update.setStatus(0);
+            update.setUpdatedTime(System.currentTimeMillis());
+            tunnelService.updateById(update);
+        } catch (Exception e) {
+            log.warn("Failed to disable tunnel. tunnelId={}, reason={}, err={}", tunnel.getId(), reason, e.getMessage(), e);
+        }
+
+        if (tunnel.getType() != null && tunnel.getType() == 2) {
+            try {
+                cleanupGostConfig(remaining, tunnel.getId());
+            } catch (Exception e) {
+                log.warn("Failed to cleanup gost config when disabling tunnel. tunnelId={}, reason={}, err={}", tunnel.getId(), reason, e.getMessage(), e);
+            }
+        }
+    }
+
+    private void cleanupGostConfig(List<ChainTunnel> chainTunnels, Long tunnelId) {
+        if (chainTunnels == null) {
+            return;
+        }
+        for (ChainTunnel chainTunnel : chainTunnels) {
+            if (chainTunnel.getChainType() == null) {
+                continue;
+            }
+            if (chainTunnel.getChainType() == 1) {
+                GostUtil.DeleteChains(chainTunnel.getNodeId(), "chains_" + tunnelId);
+            } else if (chainTunnel.getChainType() == 2) {
+                GostUtil.DeleteChains(chainTunnel.getNodeId(), "chains_" + tunnelId);
+                JSONArray services = new JSONArray();
+                services.add(tunnelId + "_tls");
+                GostUtil.DeleteService(chainTunnel.getNodeId(), services);
+            } else if (chainTunnel.getChainType() == 3) {
+                JSONArray services = new JSONArray();
+                services.add(tunnelId + "_tls");
+                GostUtil.DeleteService(chainTunnel.getNodeId(), services);
+            }
+        }
+    }
+
+    private void rebuildGostConfig(List<ChainTunnel> chainTunnels, Tunnel tunnel) {
+        if (tunnel == null || chainTunnels == null) {
+            return;
+        }
+
+        Map<Long, Node> nodes = new HashMap<>();
+        for (ChainTunnel ct : chainTunnels) {
+            Node n = this.getById(ct.getNodeId());
+            if (n != null) {
+                nodes.put(n.getId(), n);
+            }
+        }
+
+        List<ChainTunnel> inNodes = chainTunnels.stream()
+                .filter(ct -> ct.getChainType() != null && ct.getChainType() == 1)
+                .collect(Collectors.toList());
+
+        Map<Integer, List<ChainTunnel>> chainNodesMap = chainTunnels.stream()
+                .filter(ct -> ct.getChainType() != null && ct.getChainType() == 2)
+                .collect(Collectors.groupingBy(ct -> ct.getInx() != null ? ct.getInx() : 0));
+
+        List<List<ChainTunnel>> chainNodesList = chainNodesMap.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(Map.Entry::getValue)
+                .collect(Collectors.toList());
+
+        List<ChainTunnel> outNodes = chainTunnels.stream()
+                .filter(ct -> ct.getChainType() != null && ct.getChainType() == 3)
+                .collect(Collectors.toList());
+
+        if (tunnel.getType() != null && tunnel.getType() == 2) {
+            for (ChainTunnel inNode : inNodes) {
+                if (chainNodesList.isEmpty()) {
+                    GostUtil.AddChains(inNode.getNodeId(), outNodes, nodes);
+                } else {
+                    GostUtil.AddChains(inNode.getNodeId(), chainNodesList.get(0), nodes);
+                }
+            }
+
+            for (int i = 0; i < chainNodesList.size(); i++) {
+                for (ChainTunnel chainNode : chainNodesList.get(i)) {
+                    if (i + 1 >= chainNodesList.size()) {
+                        GostUtil.AddChains(chainNode.getNodeId(), outNodes, nodes);
+                    } else {
+                        GostUtil.AddChains(chainNode.getNodeId(), chainNodesList.get(i + 1), nodes);
+                    }
+                    GostUtil.AddChainService(chainNode.getNodeId(), chainNode, nodes);
+                }
+            }
+
+            for (ChainTunnel outNode : outNodes) {
+                GostUtil.AddChainService(outNode.getNodeId(), outNode, nodes);
+            }
+        }
     }
 
 
