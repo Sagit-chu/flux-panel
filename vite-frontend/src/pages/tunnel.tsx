@@ -10,6 +10,23 @@ import { Divider } from "@heroui/divider";
 import { Alert } from "@heroui/alert";
 import toast from 'react-hot-toast';
 
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
 
 import { 
   createTunnel, 
@@ -17,7 +34,8 @@ import {
   updateTunnel, 
   deleteTunnel,
   getNodeList,
-  diagnoseTunnel
+  diagnoseTunnel,
+  updateTunnelOrder
 } from "@/api";
 
 interface ChainTunnel {
@@ -30,6 +48,7 @@ interface ChainTunnel {
 
 interface Tunnel {
   id: number;
+  inx?: number;
   name: string;
   type: number; // 1: 端口转发, 2: 隧道转发
   inNodeId: ChainTunnel[]; // 入口节点列表
@@ -87,6 +106,7 @@ interface DiagnosisResult {
 export default function TunnelPage() {
   const [loading, setLoading] = useState(true);
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
+  const [tunnelOrder, setTunnelOrder] = useState<number[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
   
   // 模态框状态
@@ -131,7 +151,45 @@ export default function TunnelPage() {
       ]);
       
       if (tunnelsRes.code === 0) {
-        setTunnels(tunnelsRes.data || []);
+        const tunnelsData: Tunnel[] = (tunnelsRes.data || []).map((t: any) => ({
+          ...t,
+          inx: t.inx ?? 0,
+        }));
+        setTunnels(tunnelsData);
+
+        // 优先使用数据库中的 inx 字段进行排序，否则回退到本地排序
+        const hasDbOrdering = tunnelsData.some((t) => t.inx !== undefined && t.inx !== 0);
+        if (hasDbOrdering) {
+          const dbOrder = [...tunnelsData]
+            .sort((a, b) => (a.inx ?? 0) - (b.inx ?? 0))
+            .map((t) => t.id);
+          setTunnelOrder(dbOrder);
+        } else {
+          try {
+            const stored = localStorage.getItem('tunnel-order');
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed)) {
+                const existingIds = new Set(tunnelsData.map((t) => t.id));
+                const validOrder = parsed
+                  .map((id: any) => Number(id))
+                  .filter((id: number) => existingIds.has(id));
+
+                if (validOrder.length > 0) {
+                  setTunnelOrder(validOrder);
+                } else {
+                  setTunnelOrder(tunnelsData.map((t) => t.id));
+                }
+              } else {
+                setTunnelOrder(tunnelsData.map((t) => t.id));
+              }
+            } else {
+              setTunnelOrder(tunnelsData.map((t) => t.id));
+            }
+          } catch {
+            setTunnelOrder(tunnelsData.map((t) => t.id));
+          }
+        }
       } else {
         toast.error(tunnelsRes.msg || '获取隧道列表失败');
       }
@@ -481,6 +539,120 @@ export default function TunnelPage() {
     return { text: '😵 很差', color: 'danger' };
   };
 
+  // 处理拖拽结束
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!active || !over || active.id === over.id) return;
+    if (!tunnelOrder || tunnelOrder.length === 0) return;
+
+    const activeId = Number(active.id);
+    const overId = Number(over.id);
+    if (isNaN(activeId) || isNaN(overId)) return;
+
+    const oldIndex = tunnelOrder.indexOf(activeId);
+    const newIndex = tunnelOrder.indexOf(overId);
+    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+
+    const newOrder = arrayMove(tunnelOrder, oldIndex, newIndex);
+    setTunnelOrder(newOrder);
+
+    // 保存到 localStorage
+    try {
+      localStorage.setItem('tunnel-order', JSON.stringify(newOrder));
+    } catch (error) {
+      console.warn('无法保存隧道排序到localStorage:', error);
+    }
+
+    // 持久化到数据库
+    try {
+      const tunnelsToUpdate = newOrder.map((id, index) => ({ id, inx: index }));
+      const response = await updateTunnelOrder({ tunnels: tunnelsToUpdate });
+      if (response.code === 0) {
+        setTunnels((prev) =>
+          prev.map((tunnel) => {
+            const updated = tunnelsToUpdate.find((t) => t.id === tunnel.id);
+            return updated ? { ...tunnel, inx: updated.inx } : tunnel;
+          })
+        );
+      } else {
+        toast.error('保存排序失败：' + (response.msg || '未知错误'));
+      }
+    } catch (error) {
+      console.error('保存隧道排序到数据库失败:', error);
+      toast.error('保存排序失败，请重试');
+    }
+  };
+
+  // 传感器配置
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // 根据排序顺序获取隧道列表
+  const getSortedTunnels = (): Tunnel[] => {
+    if (!tunnels || tunnels.length === 0) return [];
+
+    const sortedTunnels = [...tunnels].sort((a, b) => {
+      const aInx = a.inx ?? 0;
+      const bInx = b.inx ?? 0;
+      return aInx - bInx;
+    });
+
+    // 如果数据库中没有排序信息，则使用本地存储的顺序
+    if (tunnelOrder && tunnelOrder.length > 0 && sortedTunnels.every((t) => t.inx === undefined || t.inx === 0)) {
+      const tunnelMap = new Map(tunnels.map((t) => [t.id, t] as const));
+      const localSorted: Tunnel[] = [];
+
+      tunnelOrder.forEach((id) => {
+        const tunnel = tunnelMap.get(id);
+        if (tunnel) localSorted.push(tunnel);
+      });
+
+      tunnels.forEach((tunnel) => {
+        if (!tunnelOrder.includes(tunnel.id)) {
+          localSorted.push(tunnel);
+        }
+      });
+
+      return localSorted;
+    }
+
+    return sortedTunnels;
+  };
+
+  const SortableItem = ({
+    id,
+    children,
+  }: {
+    id: number;
+    children: (listeners: any) => any;
+  }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id });
+
+    const style = {
+      transform: transform ? CSS.Transform.toString(transform) : undefined,
+      transition: transition || undefined,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+      <div ref={setNodeRef} style={style} {...attributes}>
+        {children(listeners)}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       
@@ -516,17 +688,24 @@ export default function TunnelPage() {
 
         {/* 隧道卡片网格 */}
         {tunnels.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-            {tunnels.map((tunnel) => {
+          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+            <SortableContext
+              items={getSortedTunnels().map((t) => t.id)}
+              strategy={rectSortingStrategy}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                {getSortedTunnels().map((tunnel) => {
               const typeDisplay = getTypeDisplay(tunnel.type);
               
               return (
-                <Card key={tunnel.id} className="shadow-sm border border-divider hover:shadow-md transition-shadow duration-200">
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between items-start w-full">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-foreground truncate text-sm">{tunnel.name}</h3>
-                        <div className="flex items-center gap-1.5 mt-1">
+                <SortableItem key={tunnel.id} id={tunnel.id}>
+                  {(listeners) => (
+                    <Card key={tunnel.id} className="group shadow-sm border border-divider hover:shadow-md transition-shadow duration-200">
+                      <CardHeader className="pb-2">
+                        <div className="flex justify-between items-start w-full">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-foreground truncate text-sm">{tunnel.name}</h3>
+                            <div className="flex items-center gap-1.5 mt-1">
                           <Chip 
                             color={typeDisplay.color as any} 
                             variant="flat" 
@@ -535,13 +714,23 @@ export default function TunnelPage() {
                           >
                             {typeDisplay.text}
                           </Chip>
-                         
+                          
+                            </div>
+                          </div>
+                          <div
+                            className="cursor-grab active:cursor-grabbing p-2 text-default-400 hover:text-default-600 transition-colors touch-manipulation opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                            {...listeners}
+                            title="拖拽排序"
+                            style={{ touchAction: 'none' }}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M7 2a2 2 0 1 1 .001 4.001A2 2 0 0 1 7 2zm0 6a2 2 0 1 1 .001 4.001A2 2 0 0 1 7 8zm0 6a2 2 0 1 1 .001 4.001A2 2 0 0 1 7 14zm6-8a2 2 0 1 1-.001-4.001A2 2 0 0 1 13 6zm0 2a2 2 0 1 1 .001 4.001A2 2 0 0 1 13 8zm0 6a2 2 0 1 1 .001 4.001A2 2 0 0 1 13 14z" />
+                            </svg>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </CardHeader>
+                      </CardHeader>
                   
-                  <CardBody className="pt-0 pb-3">
+                      <CardBody className="pt-0 pb-3">
                     <div className="space-y-3">
                       {/* 拓扑结构 */}
                       <div className="pt-2 border-t border-divider">
@@ -654,10 +843,14 @@ export default function TunnelPage() {
                     </div>
                   </CardBody>
                 </Card>
-              );
-            })}
-          </div>
-        ) : (
+              )}
+            </SortableItem>
+          );
+        })}
+      </div>
+    </SortableContext>
+  </DndContext>
+) : (
           /* 空状态 */
           <Card className="shadow-sm border border-gray-200 dark:border-gray-700">
             <CardBody className="text-center py-16">
