@@ -118,13 +118,25 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
         tunnel.setCreatedTime(currentTime);
         tunnel.setUpdatedTime(currentTime);
         if (StringUtils.isEmpty(tunnel.getInIp())){
-            StringBuilder in_ip = new StringBuilder();
+            java.util.LinkedHashSet<String> inIps = new java.util.LinkedHashSet<>();
             for (ChainTunnel chainTunnel : tunnelDto.getInNodeId()) {
                 Node node = nodes.get(chainTunnel.getNodeId());
-                in_ip.append(node.getServerIp()).append(",");
+                if (node == null) continue;
+                if (cn.hutool.core.util.StrUtil.isNotBlank(node.getServerIpV4())) {
+                    inIps.add(node.getServerIpV4().trim());
+                }
+                if (cn.hutool.core.util.StrUtil.isNotBlank(node.getServerIpV6())) {
+                    inIps.add(node.getServerIpV6().trim());
+                }
+                if (cn.hutool.core.util.StrUtil.isBlank(node.getServerIpV4())
+                        && cn.hutool.core.util.StrUtil.isBlank(node.getServerIpV6())
+                        && cn.hutool.core.util.StrUtil.isNotBlank(node.getServerIp())) {
+                    inIps.add(node.getServerIp().trim());
+                }
             }
-            in_ip.deleteCharAt(in_ip.length() - 1);
-            tunnel.setInIp(in_ip.toString());
+            if (!inIps.isEmpty()) {
+                tunnel.setInIp(String.join(",", inIps));
+            }
         }
 
         this.save(tunnel);
@@ -143,11 +155,33 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
             for (ChainTunnel in_node : tunnelDto.getInNodeId()) {
                 // 创建Chain， 指向chainNode的第一跳。如果chainNode为空就是指向出口
                 if (tunnelDto.getChainNodes().isEmpty()) { // 指向出口
-                    GostDto gostDto = GostUtil.AddChains(in_node.getNodeId(), tunnelDto.getOutNodeId(), nodes);
-                    isError(gostDto);
+                    GostDto gostDto;
+                    try {
+                        gostDto = GostUtil.AddChains(in_node.getNodeId(), tunnelDto.getOutNodeId(), nodes);
+                    } catch (RuntimeException e) {
+                        this.removeById(tunnel.getId());
+                        chainTunnelService.remove(new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnel.getId()));
+                        return R.err(e.getMessage());
+                    }
+                    if (!Objects.equals(gostDto.getMsg(), "OK")) {
+                        this.removeById(tunnel.getId());
+                        chainTunnelService.remove(new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnel.getId()));
+                        return R.err(gostDto.getMsg());
+                    }
 
                 } else {
-                    GostDto gostDto = GostUtil.AddChains(in_node.getNodeId(), tunnelDto.getChainNodes().getFirst(), nodes);// 指向第一跳
+                    GostDto gostDto;
+                    try {
+                        gostDto = GostUtil.AddChains(in_node.getNodeId(), tunnelDto.getChainNodes().getFirst(), nodes);// 指向第一跳
+                    } catch (RuntimeException e) {
+                        this.removeById(tunnel.getId());
+                        chainTunnelService.remove(new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnel.getId()));
+                        for (JSONObject chainSuccess : chain_success) {
+                            GostDto deleteChains = GostUtil.DeleteChains(chainSuccess.getLong("node_id"), chainSuccess.getString("name"));
+                            System.out.println(deleteChains);
+                        }
+                        return R.err(e.getMessage());
+                    }
                     if (Objects.equals(gostDto.getMsg(), "OK")){
                         JSONObject data = new JSONObject();
                         data.put("node_id", in_node.getNodeId());
@@ -171,7 +205,18 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
                 for (ChainTunnel chainTunnel : chainTunnels1) {
                     int inx = i+1;
                     if (inx >= tunnelDto.getChainNodes().size()) { // 指向出口
-                        GostDto gostDto = GostUtil.AddChains(chainTunnel.getNodeId(), tunnelDto.getOutNodeId(), nodes);
+                        GostDto gostDto;
+                        try {
+                            gostDto = GostUtil.AddChains(chainTunnel.getNodeId(), tunnelDto.getOutNodeId(), nodes);
+                        } catch (RuntimeException e) {
+                            this.removeById(tunnel.getId());
+                            chainTunnelService.remove(new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnel.getId()));
+                            for (JSONObject chainSuccess : chain_success) {
+                                GostDto deleteChains = GostUtil.DeleteChains(chainSuccess.getLong("node_id"), chainSuccess.getString("name"));
+                                System.out.println(deleteChains);
+                            }
+                            return R.err(e.getMessage());
+                        }
                         if (Objects.equals(gostDto.getMsg(), "OK")){
                             JSONObject data = new JSONObject();
                             data.put("node_id", chainTunnel.getNodeId());
@@ -187,7 +232,18 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
                             return R.err(gostDto.getMsg());
                         }
                     } else {
-                        GostDto gostDto = GostUtil.AddChains(chainTunnel.getNodeId(), tunnelDto.getChainNodes().get(inx), nodes);
+                        GostDto gostDto;
+                        try {
+                            gostDto = GostUtil.AddChains(chainTunnel.getNodeId(), tunnelDto.getChainNodes().get(inx), nodes);
+                        } catch (RuntimeException e) {
+                            this.removeById(tunnel.getId());
+                            chainTunnelService.remove(new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnel.getId()));
+                            for (JSONObject chainSuccess : chain_success) {
+                                GostDto deleteChains = GostUtil.DeleteChains(chainSuccess.getLong("node_id"), chainSuccess.getString("name"));
+                                System.out.println(deleteChains);
+                            }
+                            return R.err(e.getMessage());
+                        }
                         if (Objects.equals(gostDto.getMsg(), "OK")){
                             JSONObject data = new JSONObject();
                             data.put("node_id", chainTunnel.getNodeId());
@@ -457,19 +513,29 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
         tunnel.setInIp(tunnelUpdateDto.getInIp());
 
         if (StringUtils.isEmpty(tunnel.getInIp())) {
-            StringBuilder inIp = new StringBuilder();
+            java.util.LinkedHashSet<String> inIps = new java.util.LinkedHashSet<>();
             List<ChainTunnel> chainTunnels = chainTunnelService.list(
                     new QueryWrapper<ChainTunnel>().eq("tunnel_id", tunnel.getId()).eq("chain_type", 1)
             );
             for (ChainTunnel chainTunnel : chainTunnels) {
                 Node node = nodeService.getById(chainTunnel.getNodeId());
                 if (node == null) return R.err("隧道节点数据错误，部分节点不存在");
-                inIp.append(node.getServerIp()).append(",");
+
+                if (cn.hutool.core.util.StrUtil.isNotBlank(node.getServerIpV4())) {
+                    inIps.add(node.getServerIpV4().trim());
+                }
+                if (cn.hutool.core.util.StrUtil.isNotBlank(node.getServerIpV6())) {
+                    inIps.add(node.getServerIpV6().trim());
+                }
+                if (cn.hutool.core.util.StrUtil.isBlank(node.getServerIpV4())
+                        && cn.hutool.core.util.StrUtil.isBlank(node.getServerIpV6())
+                        && cn.hutool.core.util.StrUtil.isNotBlank(node.getServerIp())) {
+                    inIps.add(node.getServerIp().trim());
+                }
             }
-            if (inIp.length() > 0) {
-                inIp.deleteCharAt(inIp.length() - 1);
+            if (!inIps.isEmpty()) {
+                tunnel.setInIp(String.join(",", inIps));
             }
-            tunnel.setInIp(inIp.toString());
         }
 
         tunnel.setUpdatedTime(System.currentTimeMillis());
@@ -596,7 +662,7 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
                             Node toNode = nodeService.getById(firstChainNode.getNodeId());
                             if (toNode != null) {
                                 DiagnosisResult result = performTcpPingDiagnosisWithConnectionCheck(
-                                        fromNode, toNode.getServerIp(), firstChainNode.getPort(),
+                                        fromNode, GostUtil.selectDialHost(fromNode, toNode), firstChainNode.getPort(),
                                         "入口(" + fromNode.getName() + ")->第1跳(" + toNode.getName() + ")"
                                 );
                                 result.setFromChainType(1); // 入口
@@ -610,7 +676,7 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
                             Node toNode = nodeService.getById(outNode.getNodeId());
                             if (toNode != null) {
                                 DiagnosisResult result = performTcpPingDiagnosisWithConnectionCheck(
-                                        fromNode, toNode.getServerIp(), outNode.getPort(),
+                                        fromNode, GostUtil.selectDialHost(fromNode, toNode), outNode.getPort(),
                                         "入口(" + fromNode.getName() + ")->出口(" + toNode.getName() + ")"
                                 );
                                 result.setFromChainType(1);
@@ -634,7 +700,7 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
                                 Node toNode = nodeService.getById(nextNode.getNodeId());
                                 if (toNode != null) {
                                     DiagnosisResult result = performTcpPingDiagnosisWithConnectionCheck(
-                                            fromNode, toNode.getServerIp(), nextNode.getPort(),
+                                                fromNode, GostUtil.selectDialHost(fromNode, toNode), nextNode.getPort(),
                                             "第" + (i + 1) + "跳(" + fromNode.getName() + ")->第" + (i + 2) + "跳(" + toNode.getName() + ")"
                                     );
                                     result.setFromChainType(2);
@@ -649,7 +715,7 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
                                 Node toNode = nodeService.getById(outNode.getNodeId());
                                 if (toNode != null) {
                                     DiagnosisResult result = performTcpPingDiagnosisWithConnectionCheck(
-                                            fromNode, toNode.getServerIp(), outNode.getPort(),
+                                                fromNode, GostUtil.selectDialHost(fromNode, toNode), outNode.getPort(),
                                             "第" + (i + 1) + "跳(" + fromNode.getName() + ")->出口(" + toNode.getName() + ")"
                                     );
                                     result.setFromChainType(2);
@@ -740,7 +806,12 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
     }
 
     private void isError(GostDto gostDto){
-
+        if (gostDto == null) {
+            throw new RuntimeException("节点无响应");
+        }
+        if (!Objects.equals(gostDto.getMsg(), "OK")) {
+            throw new RuntimeException(gostDto.getMsg());
+        }
     }
 
     private DiagnosisResult performTcpPingDiagnosis(Node node, String targetIp, int port, String description) {

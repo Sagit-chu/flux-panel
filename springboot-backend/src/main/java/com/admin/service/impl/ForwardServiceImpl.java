@@ -548,7 +548,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
                             Node toNode = nodeService.getById(firstChainNode.getNodeId());
                             if (toNode != null) {
                                 DiagnosisResult result = performTcpPingDiagnosisWithConnectionCheck(
-                                        fromNode, toNode.getServerIp(), firstChainNode.getPort(),
+                                    fromNode, GostUtil.selectDialHost(fromNode, toNode), firstChainNode.getPort(),
                                         "入口(" + fromNode.getName() + ")->第1跳(" + toNode.getName() + ")"
                                 );
                                 result.setFromChainType(1);
@@ -562,7 +562,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
                             Node toNode = nodeService.getById(outNode.getNodeId());
                             if (toNode != null) {
                                 DiagnosisResult result = performTcpPingDiagnosisWithConnectionCheck(
-                                        fromNode, toNode.getServerIp(), outNode.getPort(),
+                                        fromNode, GostUtil.selectDialHost(fromNode, toNode), outNode.getPort(),
                                         "入口(" + fromNode.getName() + ")->出口(" + toNode.getName() + ")"
                                 );
                                 result.setFromChainType(1);
@@ -587,7 +587,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
                                 Node toNode = nodeService.getById(nextNode.getNodeId());
                                 if (toNode != null) {
                                     DiagnosisResult result = performTcpPingDiagnosisWithConnectionCheck(
-                                            fromNode, toNode.getServerIp(), nextNode.getPort(),
+                                            fromNode, GostUtil.selectDialHost(fromNode, toNode), nextNode.getPort(),
                                             "第" + (i + 1) + "跳(" + fromNode.getName() + ")->第" + (i + 2) + "跳(" + toNode.getName() + ")"
                                     );
                                     result.setFromChainType(2);
@@ -602,7 +602,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
                                 Node toNode = nodeService.getById(outNode.getNodeId());
                                 if (toNode != null) {
                                     DiagnosisResult result = performTcpPingDiagnosisWithConnectionCheck(
-                                            fromNode, toNode.getServerIp(), outNode.getPort(),
+                                            fromNode, GostUtil.selectDialHost(fromNode, toNode), outNode.getPort(),
                                             "第" + (i + 1) + "跳(" + fromNode.getName() + ")->出口(" + toNode.getName() + ")"
                                     );
                                     result.setFromChainType(2);

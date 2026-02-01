@@ -7,6 +7,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.regex.Pattern;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,6 +44,7 @@ public class GostUtil {
 
     public static GostDto AddChains(Long node_id, List<ChainTunnel> chainTunnels, Map<Long, Node> node_s) {
         JSONArray nodes = new JSONArray();
+        Node fromNode = node_s.get(node_id);
         for (ChainTunnel chainTunnel : chainTunnels) {
             JSONObject dialer = new JSONObject();
             dialer.put("type", chainTunnel.getProtocol());
@@ -53,7 +55,11 @@ public class GostUtil {
             Node node_info = node_s.get(chainTunnel.getNodeId());
             JSONObject node = new JSONObject();
             node.put("name", "node_" + chainTunnel.getInx());
-            node.put("addr", processServerAddress(node_info.getServerIp() + ":" + chainTunnel.getPort()));
+
+            String dialHost = (fromNode != null && node_info != null)
+                    ? selectDialHost(fromNode, node_info)
+                    : (node_info != null ? node_info.getServerIp() : null);
+            node.put("addr", processServerAddress(dialHost + ":" + chainTunnel.getPort()));
             node.put("connector", connector);
             node.put("dialer", dialer);
 
@@ -290,5 +296,104 @@ public class GostUtil {
         // 计算冒号数量，IPv6地址至少有2个冒号
         long colonCount = address.chars().filter(ch -> ch == ':').count();
         return colonCount >= 2;
+    }
+
+    /**
+     * v4 优先：当两端都有 v4 时选择 v4，否则尝试 v6。
+     * 用于节点之间建立链路（A -> B 需要选择 B 的地址族，且 A 需要支持该地址族）。
+     */
+    public static String selectDialHost(Node fromNode, Node toNode) {
+        if (fromNode == null || toNode == null) {
+            throw new IllegalArgumentException("node is null");
+        }
+
+        boolean fromV4 = supportsV4(fromNode);
+        boolean fromV6 = supportsV6(fromNode);
+        boolean toV4 = supportsV4(toNode);
+        boolean toV6 = supportsV6(toNode);
+
+        if (fromV4 && toV4) {
+            return pickToAddressV4(toNode);
+        }
+        if (fromV6 && toV6) {
+            return pickToAddressV6(toNode);
+        }
+
+        throw new RuntimeException(
+                "节点链路不兼容：" + safeName(fromNode) + "(v4=" + fromV4 + ",v6=" + fromV6 + ") -> "
+                        + safeName(toNode) + "(v4=" + toV4 + ",v6=" + toV6 + ")"
+        );
+    }
+
+    private static String safeName(Node node) {
+        if (node.getName() == null || node.getName().isBlank()) {
+            return "node_" + node.getId();
+        }
+        return node.getName();
+    }
+
+    private static boolean supportsV4(Node node) {
+        if (StrUtil.isNotBlank(node.getServerIpV4())) {
+            return true;
+        }
+
+        String legacy = node.getServerIp();
+        if (StrUtil.isBlank(legacy)) {
+            return false;
+        }
+
+        legacy = legacy.trim();
+        if (looksLikeIpv4(legacy)) {
+            return true;
+        }
+        if (isIPv6Address(legacy)) {
+            return false;
+        }
+
+        // 域名/其它：无法判断，按双栈处理以保持兼容
+        return true;
+    }
+
+    private static boolean supportsV6(Node node) {
+        if (StrUtil.isNotBlank(node.getServerIpV6())) {
+            return true;
+        }
+
+        String legacy = node.getServerIp();
+        if (StrUtil.isBlank(legacy)) {
+            return false;
+        }
+
+        legacy = legacy.trim();
+        if (isIPv6Address(legacy)) {
+            return true;
+        }
+        if (looksLikeIpv4(legacy)) {
+            return false;
+        }
+
+        // 域名/其它：无法判断，按双栈处理以保持兼容
+        return true;
+    }
+
+    private static String pickToAddressV4(Node toNode) {
+        if (StrUtil.isNotBlank(toNode.getServerIpV4())) {
+            return toNode.getServerIpV4().trim();
+        }
+        String legacy = toNode.getServerIp();
+        return legacy != null ? legacy.trim() : null;
+    }
+
+    private static String pickToAddressV6(Node toNode) {
+        if (StrUtil.isNotBlank(toNode.getServerIpV6())) {
+            return toNode.getServerIpV6().trim();
+        }
+        String legacy = toNode.getServerIp();
+        return legacy != null ? legacy.trim() : null;
+    }
+
+    private static boolean looksLikeIpv4(String value) {
+        Pattern ipv4 = Pattern.compile("^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$");
+        return ipv4.matcher(value).matches();
     }
 }
