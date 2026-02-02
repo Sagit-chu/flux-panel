@@ -117,6 +117,19 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
         long currentTime = System.currentTimeMillis();
         tunnel.setCreatedTime(currentTime);
         tunnel.setUpdatedTime(currentTime);
+
+        // When tunnels are ordered via `inx`, new tunnels should be appended.
+        // Only apply this when an order already exists (max `inx` > 0) to avoid
+        // changing behavior for deployments still relying on local ordering.
+        Tunnel lastByInx = this.getOne(new QueryWrapper<Tunnel>()
+                .select("inx")
+                .orderByDesc("inx")
+                .orderByDesc("id")
+                .last("LIMIT 1"));
+        Integer maxInx = lastByInx == null ? null : lastByInx.getInx();
+        if (maxInx != null && maxInx > 0) {
+            tunnel.setInx(maxInx + 1);
+        }
         if (StringUtils.isEmpty(tunnel.getInIp())){
             java.util.LinkedHashSet<String> inIps = new java.util.LinkedHashSet<>();
             for (ChainTunnel chainTunnel : tunnelDto.getInNodeId()) {
