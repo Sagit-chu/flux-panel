@@ -5,6 +5,7 @@ import com.admin.common.annotation.RequireRole;
 import com.admin.common.dto.TunnelDto;
 import com.admin.common.dto.TunnelUpdateDto;
 
+import com.admin.common.dto.UserTunnelBatchAssignDto;
 import com.admin.common.dto.UserTunnelDto;
 import com.admin.common.dto.UserTunnelQueryDto;
 import com.admin.common.dto.UserTunnelUpdateDto;
@@ -77,6 +78,13 @@ public class TunnelController extends BaseController {
     @PostMapping("/user/assign")
     public R assignUserTunnel(@Validated @RequestBody UserTunnelDto userTunnelDto) {
         return userTunnelService.assignUserTunnel(userTunnelDto);
+    }
+
+    @LogAnnotation
+    @RequireRole
+    @PostMapping("/user/batch-assign")
+    public R batchAssignUserTunnel(@Validated @RequestBody UserTunnelBatchAssignDto batchAssignDto) {
+        return userTunnelService.batchAssignUserTunnel(batchAssignDto);
     }
     
     /**

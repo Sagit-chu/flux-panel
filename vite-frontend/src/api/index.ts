@@ -46,6 +46,8 @@ export const updateTunnelOrder = (data: { tunnels: Array<{ id: number; inx: numb
 
 // 用户隧道权限管理操作 - 全部使用POST请求
 export const assignUserTunnel = (data: any) => Network.post("/tunnel/user/assign", data);
+export const batchAssignUserTunnel = (data: { userId: number; tunnels: Array<{ tunnelId: number; speedId?: number | null }> }) => 
+  Network.post("/tunnel/user/batch-assign", data);
 export const getUserTunnelList = (queryData: any = {}) => Network.post("/tunnel/user/list", queryData);
 export const removeUserTunnel = (params: any) => Network.post("/tunnel/user/remove", params);
 export const updateUserTunnel = (data: any) => Network.post("/tunnel/user/update", data);
