@@ -58,6 +58,15 @@ export interface UserTunnelForm {
   speedId: number | null;
 }
 
+export interface TunnelAssignItem {
+  tunnelId: number;
+  speedId: number | null;
+}
+
+export interface UserTunnelBatchAssignForm {
+  tunnels: TunnelAssignItem[];
+}
+
 export interface Tunnel {
   id: number;
   name: string;

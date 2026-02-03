@@ -31,6 +31,7 @@ import {
   UserForm, 
   UserTunnel, 
   UserTunnelForm, 
+  TunnelAssignItem,
   Tunnel, 
   SpeedLimit, 
   Pagination as PaginationType 
@@ -42,6 +43,7 @@ import {
   deleteUser,
   getTunnelList,
   assignUserTunnel,
+  batchAssignUserTunnel,
   getUserTunnelList,
   removeUserTunnel,
   updateUserTunnel,
@@ -143,6 +145,7 @@ export default function UserPage() {
     speedId: null
   });
   const [assignLoading, setAssignLoading] = useState(false);
+  const [batchTunnelSelections, setBatchTunnelSelections] = useState<Map<number, number | null>>(new Map());
 
   // 编辑隧道权限相关状态
   const { isOpen: isEditTunnelModalOpen, onOpen: onEditTunnelModalOpen, onClose: onEditTunnelModalClose } = useDisclosure();
@@ -342,6 +345,7 @@ export default function UserPage() {
       flowResetTime: 0,
       speedId: null
     });
+    setBatchTunnelSelections(new Map());
     onTunnelModalOpen();
     loadUserTunnels(user.id);
   };
@@ -374,6 +378,37 @@ export default function UserPage() {
           flowResetTime: 0,
           speedId: null
         });
+        loadUserTunnels(currentUser.id);
+      } else {
+        toast.error(response.msg || '分配失败');
+      }
+    } catch (error) {
+      toast.error('分配失败');
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
+  const handleBatchAssignTunnel = async () => {
+    if (batchTunnelSelections.size === 0 || !currentUser) {
+      toast.error('请选择至少一个隧道');
+      return;
+    }
+
+    setAssignLoading(true);
+    try {
+      const tunnelsToAssign: TunnelAssignItem[] = Array.from(batchTunnelSelections.entries()).map(
+        ([tunnelId, speedId]) => ({ tunnelId, speedId })
+      );
+      
+      const response = await batchAssignUserTunnel({
+        userId: currentUser.id,
+        tunnels: tunnelsToAssign
+      });
+
+      if (response.code === 0) {
+        toast.success(response.msg || '分配成功');
+        setBatchTunnelSelections(new Map());
         loadUserTunnels(currentUser.id);
       } else {
         toast.error(response.msg || '分配失败');
@@ -525,6 +560,34 @@ export default function UserPage() {
   const editAvailableSpeedLimits = speedLimits.filter(
     speedLimit => speedLimit.tunnelId === editTunnelForm?.tunnelId
   );
+
+  const getSpeedLimitsForTunnel = (tunnelId: number) => {
+    return speedLimits.filter(sl => sl.tunnelId === tunnelId);
+  };
+
+  const toggleTunnelSelection = (tunnelId: number) => {
+    setBatchTunnelSelections(prev => {
+      const newMap = new Map(prev);
+      if (newMap.has(tunnelId)) {
+        newMap.delete(tunnelId);
+      } else {
+        newMap.set(tunnelId, null);
+      }
+      return newMap;
+    });
+  };
+
+  const updateTunnelSpeedLimit = (tunnelId: number, speedId: number | null) => {
+    setBatchTunnelSelections(prev => {
+      const newMap = new Map(prev);
+      newMap.set(tunnelId, speedId);
+      return newMap;
+    });
+  };
+
+  const isTunnelAssigned = (tunnelId: number) => {
+    return userTunnels.some(ut => ut.tunnelId === tunnelId);
+  };
 
   return (
     
@@ -878,107 +941,73 @@ export default function UserPage() {
               <div>
                 <h3 className="text-lg font-semibold mb-4">分配新权限</h3>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Select
-                      label="选择隧道"
-                      selectedKeys={tunnelForm.tunnelId ? [tunnelForm.tunnelId.toString()] : []}
-                      onSelectionChange={(keys) => {
-                        const value = Array.from(keys)[0] as string;
-                        setTunnelForm(prev => ({ ...prev, tunnelId: Number(value) || null, speedId: null }));
-                      }}
-                    >
-                      {availableTunnels.map(tunnel => (
-                        <SelectItem key={tunnel.id.toString()} textValue={tunnel.name}>
-                          {tunnel.name}
-                        </SelectItem>
-                      ))}
-                    </Select>
-                    
-                    <Select
-                      label="限速规则"
-                      selectedKeys={tunnelForm.speedId ? [tunnelForm.speedId.toString()] : ["null"]}
-                      onSelectionChange={(keys) => {
-                        const value = Array.from(keys)[0] as string;
-                        setTunnelForm(prev => ({ ...prev, speedId: value === "null" ? null : Number(value) }));
-                      }}
-                      isDisabled={!tunnelForm.tunnelId}
-                    >
-                      {[
-                        <SelectItem key="null" textValue="不限速">不限速</SelectItem>,
-                        ...availableSpeedLimits.map(speedLimit => (
-                          <SelectItem key={speedLimit.id.toString()} textValue={speedLimit.name}>
-                            {speedLimit.name}
-                          </SelectItem>
-                        ))
-                      ]}
-                    </Select>
-                    
-                    <Input
-                      label="流量限制(GB)"
-                      type="number"
-                      value={tunnelForm.flow.toString()}
-                      onChange={(e) => {
-                        const value = Math.min(Math.max(Number(e.target.value) || 0, 1), 99999);
-                        setTunnelForm(prev => ({ ...prev, flow: value }));
-                      }}
-                      min="1"
-                      max="99999"
-                    />
-                    
-                    <Input
-                      label="转发数量"
-                      type="number"
-                      value={tunnelForm.num.toString()}
-                      onChange={(e) => {
-                        const value = Math.min(Math.max(Number(e.target.value) || 0, 1), 99999);
-                        setTunnelForm(prev => ({ ...prev, num: value }));
-                      }}
-                      min="1"
-                      max="99999"
-                    />
-                    
-                    <Select
-                      label="流量重置日期"
-                      selectedKeys={[tunnelForm.flowResetTime.toString()]}
-                      onSelectionChange={(keys) => {
-                        const value = Array.from(keys)[0] as string;
-                        setTunnelForm(prev => ({ ...prev, flowResetTime: Number(value) }));
-                      }}
-                    >
-                      <>
-                        <SelectItem key="0" textValue="不重置">
-                          不重置
-                        </SelectItem>
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                        <SelectItem key={day.toString()} textValue={`每月${day}号（0点重置）`}>
-                          每月{day}号（0点重置）
-                        </SelectItem>
-                      ))}
-                      </>
-                    </Select>
-                    
-                    <DatePicker
-                      label="到期时间"
-                      value={tunnelForm.expTime ? parseDate(tunnelForm.expTime.toISOString().split('T')[0]) as any : null}
-                      onChange={(date) => {
-                        if (date) {
-                          const jsDate = new Date(date.year, date.month - 1, date.day, 23, 59, 59);
-                          setTunnelForm(prev => ({ ...prev, expTime: jsDate }));
-                        } else {
-                          setTunnelForm(prev => ({ ...prev, expTime: null }));
-                        }
-                      }}
-                      showMonthAndYearPickers
-                      className="cursor-pointer"
-                    />
+                  <div className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                    流量限制、转发数量、到期时间、流量重置时间将自动继承用户设置
+                  </div>
+                  
+                  <div className="border rounded-lg divide-y dark:divide-gray-700 max-h-64 overflow-y-auto">
+                    {tunnels.map(tunnel => {
+                      const isAssigned = isTunnelAssigned(tunnel.id);
+                      const isSelected = batchTunnelSelections.has(tunnel.id);
+                      const tunnelSpeedLimits = getSpeedLimitsForTunnel(tunnel.id);
+                      
+                      return (
+                        <div 
+                          key={tunnel.id} 
+                          className={`p-3 flex items-center justify-between gap-4 ${isAssigned ? 'bg-gray-100 dark:bg-gray-800' : ''}`}
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={isAssigned}
+                              onChange={() => toggleTunnelSelection(tunnel.id)}
+                              className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary disabled:opacity-50"
+                            />
+                            <span className={isAssigned ? 'text-gray-400' : ''}>
+                              {tunnel.name}
+                            </span>
+                            {isAssigned && (
+                              <Chip size="sm" variant="flat" color="default">已分配</Chip>
+                            )}
+                          </div>
+                          
+                          {isSelected && !isAssigned && (
+                            <Select
+                              size="sm"
+                              label="限速规则"
+                              className="w-40"
+                              selectedKeys={batchTunnelSelections.get(tunnel.id) !== null && batchTunnelSelections.get(tunnel.id) !== undefined ? [batchTunnelSelections.get(tunnel.id)!.toString()] : ["null"]}
+                              onSelectionChange={(keys) => {
+                                const value = Array.from(keys)[0] as string;
+                                updateTunnelSpeedLimit(tunnel.id, value === "null" ? null : Number(value));
+                              }}
+                            >
+                              {[
+                                <SelectItem key="null" textValue="不限速">不限速</SelectItem>,
+                                ...tunnelSpeedLimits.map(sl => (
+                                  <SelectItem key={sl.id.toString()} textValue={sl.name}>
+                                    {sl.name}
+                                  </SelectItem>
+                                ))
+                              ]}
+                            </Select>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {tunnels.length === 0 && (
+                      <div className="p-4 text-center text-gray-500">暂无可用隧道</div>
+                    )}
                   </div>
                   
                   <Button
                     color="primary"
-                    onPress={handleAssignTunnel}
+                    onPress={handleBatchAssignTunnel}
                     isLoading={assignLoading}
+                    isDisabled={batchTunnelSelections.size === 0}
                   >
-                    分配权限
+                    分配权限 {batchTunnelSelections.size > 0 && `(${batchTunnelSelections.size}个隧道)`}
                   </Button>
                 </div>
               </div>
