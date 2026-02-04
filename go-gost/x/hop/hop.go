@@ -201,11 +201,26 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		return nodes[0]
 	}
 
-	// Always go through selector for proper FailFilter evaluation,
-	// even when there's only one node. This ensures failed nodes
-	// can be filtered out properly.
+	// For single-node case: bypass selector/FailFilter to ensure availability.
+	// The marker system still works for metrics, but we don't block requests
+	// based on recent failures - the connection will be attempted regardless.
+	// This matches upstream go-gost/x behavior.
+	if len(nodes) == 1 {
+		return nodes[0]
+	}
+
+	// Multi-node case: use selector with FailFilter for proper failover.
+	// FailFilter will exclude recently-failed nodes, allowing traffic to
+	// be routed to healthy alternatives.
 	if s := p.options.selector; s != nil {
-		return s.Select(ctx, nodes...)
+		if node := s.Select(ctx, nodes...); node != nil {
+			return node
+		}
+		// All nodes filtered out by FailFilter - all are marked as failed.
+		// Return nil to signal "no healthy nodes available" to the caller.
+		// The handler's retry loop will handle this appropriately.
+		log.Debugf("all %d nodes filtered out by FailFilter, no healthy nodes available", len(nodes))
+		return nil
 	}
 
 	// Fallback: return first node if no selector configured
