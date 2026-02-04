@@ -247,64 +247,100 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 		}
 	}
 
-	node = &chain.Node{
-		Addr: host,
+	// Determine max retry attempts
+	maxRetries := 1
+	if nl, ok := ho.Hop.(hop.NodeList); ok {
+		maxRetries = len(nl.Nodes())
 	}
-	if ho.Hop != nil {
-		node = ho.Hop.Select(ctx,
-			hop.ClientIPSelectOption(net.ParseIP(ro.ClientIP)),
-			hop.ProtocolSelectOption(sniffing.ProtoHTTP),
-			hop.HostSelectOption(host),
-			hop.MethodSelectOption(req.Method),
-			hop.PathSelectOption(req.URL.Path),
-			hop.QuerySelectOption(req.URL.Query()),
-			hop.HeaderSelectOption(req.Header),
-		)
-	}
-	if node == nil {
-		ho.Log.Warnf("node for %s not found", host)
-		res.StatusCode = http.StatusBadGateway
-		ro.HTTP.StatusCode = res.StatusCode
-		res.Write(conn)
-		return nil, nil, errors.New("node not available")
+	if maxRetries <= 0 {
+		maxRetries = 1
 	}
 
-	ro.Host = node.Addr
-	ho.Log = ho.Log.WithFields(map[string]any{
-		"node": node.Name,
-		"dst":  node.Addr,
-	})
-	ho.Log.Debugf("find node for host %s -> %s(%s)", host, node.Name, node.Addr)
+	var triedNodes []string
+	var lastErr error
 
-	cc, err = dial(ctx, "tcp", node.Addr)
-	if err != nil {
-		// TODO: the router itself may be failed due to the failed node in the router,
-		// the dead marker may be a wrong operation.
-		if marker := node.Marker(); marker != nil {
-			marker.Mark()
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Select a node, excluding previously tried nodes
+		selectCtx := ctxvalue.ContextWithExcludeNodes(ctx, triedNodes)
+
+		node = &chain.Node{
+			Addr: host,
 		}
-		ho.Log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
-		res.Write(conn)
-		return
-	}
-	if marker := node.Marker(); marker != nil {
-		marker.Reset()
-	}
-
-	if tlsSettings := node.Options().TLS; tlsSettings != nil {
-		cfg := &tls.Config{
-			ServerName:         tlsSettings.ServerName,
-			InsecureSkipVerify: !tlsSettings.Secure,
+		if ho.Hop != nil {
+			node = ho.Hop.Select(selectCtx,
+				hop.ClientIPSelectOption(net.ParseIP(ro.ClientIP)),
+				hop.ProtocolSelectOption(sniffing.ProtoHTTP),
+				hop.HostSelectOption(host),
+				hop.MethodSelectOption(req.Method),
+				hop.PathSelectOption(req.URL.Path),
+				hop.QuerySelectOption(req.URL.Query()),
+				hop.HeaderSelectOption(req.Header),
+			)
 		}
-		tls_util.SetTLSOptions(cfg, &config.TLSOptions{
-			MinVersion:   tlsSettings.Options.MinVersion,
-			MaxVersion:   tlsSettings.Options.MaxVersion,
-			CipherSuites: tlsSettings.Options.CipherSuites,
-			ALPN:         tlsSettings.Options.ALPN,
+		if node == nil {
+			if lastErr != nil {
+				ho.Log.Warnf("node for %s not found after retries", host)
+				res.StatusCode = http.StatusBadGateway
+				ro.HTTP.StatusCode = res.StatusCode
+				res.Write(conn)
+				return nil, nil, lastErr
+			}
+			ho.Log.Warnf("node for %s not found", host)
+			res.StatusCode = http.StatusBadGateway
+			ro.HTTP.StatusCode = res.StatusCode
+			res.Write(conn)
+			return nil, nil, errors.New("node not available")
+		}
+
+		// Track this node as tried
+		triedNodes = append(triedNodes, node.Addr)
+
+		ro.Host = node.Addr
+		ho.Log = ho.Log.WithFields(map[string]any{
+			"node": node.Name,
+			"dst":  node.Addr,
 		})
-		cc = tls.Client(cc, cfg)
+		ho.Log.Debugf("find node for host %s -> %s(%s)", host, node.Name, node.Addr)
+
+		cc, err = dial(ctx, "tcp", node.Addr)
+		if err != nil {
+			// Mark node as failed for future selections
+			if marker := node.Marker(); marker != nil {
+				marker.Mark()
+			}
+			ho.Log.Warnf("connect to node %s(%s) failed: %v, trying next node", node.Name, node.Addr, err)
+			lastErr = err
+			continue
+		}
+
+		// Success - reset marker
+		if marker := node.Marker(); marker != nil {
+			marker.Reset()
+		}
+
+		if tlsSettings := node.Options().TLS; tlsSettings != nil {
+			cfg := &tls.Config{
+				ServerName:         tlsSettings.ServerName,
+				InsecureSkipVerify: !tlsSettings.Secure,
+			}
+			tls_util.SetTLSOptions(cfg, &config.TLSOptions{
+				MinVersion:   tlsSettings.Options.MinVersion,
+				MaxVersion:   tlsSettings.Options.MaxVersion,
+				CipherSuites: tlsSettings.Options.CipherSuites,
+				ALPN:         tlsSettings.Options.ALPN,
+			})
+			cc = tls.Client(cc, cfg)
+		}
+		return node, cc, nil
 	}
-	return
+
+	// All retries exhausted
+	ho.Log.Warnf("all nodes failed for host %s", host)
+	res.Write(conn)
+	if lastErr != nil {
+		return nil, nil, lastErr
+	}
+	return nil, nil, errors.New("all nodes failed")
 }
 
 func (h *Sniffer) serveH2(ctx context.Context, conn net.Conn, ho *HandleOptions) error {
@@ -847,74 +883,107 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 		return
 	}
 
-	if host != "" {
-		node = &chain.Node{
-			Addr: host,
-		}
-	}
-
 	ro := ho.RecorderObject
-	if ho.Hop != nil {
-		node = ho.Hop.Select(ctx,
-			hop.ClientIPSelectOption(net.ParseIP(ro.ClientIP)),
-			hop.HostSelectOption(host),
-			hop.ProtocolSelectOption(sniffing.ProtoTLS),
-		)
+
+	// Determine max retry attempts
+	maxRetries := 1
+	if nl, ok := ho.Hop.(hop.NodeList); ok {
+		maxRetries = len(nl.Nodes())
 	}
-	if node == nil {
-		err = errors.New("node not available")
-		return
+	if maxRetries <= 0 {
+		maxRetries = 1
 	}
 
-	addr := node.Addr
-	if opts := node.Options(); opts != nil {
-		switch opts.Network {
-		case "unix":
-			ro.Network = opts.Network
-		default:
-			if _, _, err := net.SplitHostPort(addr); err != nil {
-				addr += ":443"
+	var triedNodes []string
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Select a node, excluding previously tried nodes
+		selectCtx := ctxvalue.ContextWithExcludeNodes(ctx, triedNodes)
+
+		node = nil
+		if host != "" {
+			node = &chain.Node{
+				Addr: host,
 			}
 		}
-	}
-	ro.Host = addr
-
-	ho.Log = ho.Log.WithFields(map[string]any{
-		"host": host,
-		"node": node.Name,
-		"dst":  fmt.Sprintf("%s/%s", addr, ro.Network),
-	})
-	ho.Log.Debugf("find node for host %s -> %s(%s)", host, node.Name, addr)
-
-	cc, err = dial(ctx, ro.Network, addr)
-	if err != nil {
-		// TODO: the router itself may be failed due to the failed node in the router,
-		// the dead marker may be a wrong operation.
-		if marker := node.Marker(); marker != nil {
-			marker.Mark()
+		if ho.Hop != nil {
+			node = ho.Hop.Select(selectCtx,
+				hop.ClientIPSelectOption(net.ParseIP(ro.ClientIP)),
+				hop.HostSelectOption(host),
+				hop.ProtocolSelectOption(sniffing.ProtoTLS),
+			)
 		}
-		ho.Log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
-		return
-	}
-
-	if marker := node.Marker(); marker != nil {
-		marker.Reset()
-	}
-
-	if tlsSettings := node.Options().TLS; tlsSettings != nil {
-		cfg := &tls.Config{
-			ServerName:         tlsSettings.ServerName,
-			InsecureSkipVerify: !tlsSettings.Secure,
+		if node == nil {
+			if lastErr != nil {
+				ho.Log.Warnf("node for %s not found after retries", host)
+				return nil, nil, lastErr
+			}
+			ho.Log.Warnf("node for %s not found", host)
+			return nil, nil, errors.New("node not available")
 		}
-		tls_util.SetTLSOptions(cfg, &config.TLSOptions{
-			MinVersion:   tlsSettings.Options.MinVersion,
-			MaxVersion:   tlsSettings.Options.MaxVersion,
-			CipherSuites: tlsSettings.Options.CipherSuites,
-			ALPN:         tlsSettings.Options.ALPN,
+
+		// Track this node as tried
+		triedNodes = append(triedNodes, node.Addr)
+
+		addr := node.Addr
+		if opts := node.Options(); opts != nil {
+			switch opts.Network {
+			case "unix":
+				ro.Network = opts.Network
+			default:
+				if _, _, err := net.SplitHostPort(addr); err != nil {
+					addr += ":443"
+				}
+			}
+		}
+		ro.Host = addr
+
+		ho.Log = ho.Log.WithFields(map[string]any{
+			"host": host,
+			"node": node.Name,
+			"dst":  fmt.Sprintf("%s/%s", addr, ro.Network),
 		})
-		cc = tls.Client(cc, cfg)
+		ho.Log.Debugf("find node for host %s -> %s(%s)", host, node.Name, addr)
+
+		cc, err = dial(ctx, ro.Network, addr)
+		if err != nil {
+			// Mark node as failed for future selections
+			if marker := node.Marker(); marker != nil {
+				marker.Mark()
+			}
+			ho.Log.Warnf("connect to node %s(%s) failed: %v, trying next node", node.Name, node.Addr, err)
+			lastErr = err
+			continue
+		}
+
+		// Success - reset marker
+		if marker := node.Marker(); marker != nil {
+			marker.Reset()
+		}
+
+		if tlsSettings := node.Options().TLS; tlsSettings != nil {
+			cfg := &tls.Config{
+				ServerName:         tlsSettings.ServerName,
+				InsecureSkipVerify: !tlsSettings.Secure,
+			}
+			tls_util.SetTLSOptions(cfg, &config.TLSOptions{
+				MinVersion:   tlsSettings.Options.MinVersion,
+				MaxVersion:   tlsSettings.Options.MaxVersion,
+				CipherSuites: tlsSettings.Options.CipherSuites,
+				ALPN:         tlsSettings.Options.ALPN,
+			})
+			cc = tls.Client(cc, cfg)
+		}
+		return node, cc, nil
 	}
-	return
+
+	// All retries exhausted
+	ho.Log.Warnf("all nodes failed for host %s", host)
+	if lastErr != nil {
+		return nil, nil, lastErr
+	}
+	return nil, nil, errors.New("all nodes failed")
 }
 
 func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHello *dissector.ClientHelloInfo, ho *HandleOptions) error {

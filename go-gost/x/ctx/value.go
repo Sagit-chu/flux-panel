@@ -109,3 +109,23 @@ func LoggerFromContext(ctx context.Context) logger.Logger {
 	v, _ := ctx.Value(keyLogger).(logger.Logger)
 	return v
 }
+
+// excludeNodesKey saves the list of node addresses to exclude during selection.
+// This is used for failover retry logic - when a node fails, it gets added to
+// the exclude list so the next Select() call will skip it.
+type excludeNodesKey struct{}
+
+var (
+	keyExcludeNodes = &excludeNodesKey{}
+)
+
+// ContextWithExcludeNodes returns a context with the list of node addresses to exclude.
+func ContextWithExcludeNodes(ctx context.Context, nodes []string) context.Context {
+	return context.WithValue(ctx, keyExcludeNodes, nodes)
+}
+
+// ExcludeNodesFromContext returns the list of node addresses to exclude from selection.
+func ExcludeNodesFromContext(ctx context.Context) []string {
+	v, _ := ctx.Value(keyExcludeNodes).([]string)
+	return v
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/x/config"
 	node_parser "github.com/go-gost/x/config/parsing/node"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/loader"
 )
 
@@ -141,11 +142,25 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		return nil
 	}
 
+	// Get list of nodes to exclude (for failover retry)
+	excludeNodes := ctxvalue.ExcludeNodesFromContext(ctx)
+	excludeSet := make(map[string]bool)
+	for _, addr := range excludeNodes {
+		excludeSet[addr] = true
+	}
+
 	var nodes []*chain.Node
 	for _, node := range p.Nodes() {
 		if node == nil {
 			continue
 		}
+
+		// Skip nodes in the exclude list (failover retry)
+		if excludeSet[node.Addr] || excludeSet[node.Name] {
+			log.Debugf("node %s(%s) excluded for failover retry", node.Name, node.Addr)
+			continue
+		}
+
 		// node level bypass
 		if node.Options().Bypass != nil &&
 			node.Options().Bypass.Contains(ctx, options.Network, options.Addr, bypass.WithHostOpton(options.Host)) {
@@ -177,9 +192,6 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	if len(nodes) == 0 {
 		return nil
 	}
-	if len(nodes) == 1 {
-		return nodes[0]
-	}
 
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].Options().Priority > nodes[j].Options().Priority
@@ -189,9 +201,14 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		return nodes[0]
 	}
 
+	// Always go through selector for proper FailFilter evaluation,
+	// even when there's only one node. This ensures failed nodes
+	// can be filtered out properly.
 	if s := p.options.selector; s != nil {
 		return s.Select(ctx, nodes...)
 	}
+
+	// Fallback: return first node if no selector configured
 	return nodes[0]
 }
 

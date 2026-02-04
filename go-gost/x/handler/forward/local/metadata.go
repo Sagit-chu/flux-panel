@@ -25,6 +25,12 @@ type metadata struct {
 	privateKey  crypto.PrivateKey
 	alpn        string
 	mitmBypass  bypass.Bypass
+
+	// maxRetries specifies the maximum number of failover retry attempts.
+	// When a target node fails, the handler will try the next available node.
+	// 0 means use the total number of available nodes (try all nodes once).
+	// Default: 0 (try all available nodes)
+	maxRetries int
 }
 
 func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -55,6 +61,9 @@ func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	h.md.alpn = mdutil.GetString(md, "mitm.alpn")
 	h.md.mitmBypass = registry.BypassRegistry().Get(mdutil.GetString(md, "mitm.bypass"))
+
+	// maxRetries: 0 means try all available nodes (default behavior)
+	h.md.maxRetries = mdutil.GetInt(md, "maxRetries", "retry.max")
 
 	return
 }

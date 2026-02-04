@@ -204,68 +204,103 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 	}
 
-	var target *chain.Node
-	if host != "" {
-		target = &chain.Node{
-			Addr: host,
+	// Determine max retry attempts
+	maxRetries := h.md.maxRetries
+	if maxRetries <= 0 {
+		// Default: try all available nodes
+		if nl, ok := h.hop.(hop.NodeList); ok {
+			maxRetries = len(nl.Nodes())
 		}
-	}
-	if h.hop != nil {
-		target = h.hop.Select(ctx,
-			hop.ProtocolSelectOption(proto),
-		)
-	}
-	if target == nil {
-		err := errors.New("node not available")
-		log.Error(err)
-		return err
-	}
-
-	if opts := target.Options(); opts != nil {
-		switch opts.Network {
-		case "unix":
-			network = opts.Network
-		default:
+		if maxRetries <= 0 {
+			maxRetries = 1
 		}
 	}
 
-	ro.Network = network
-	ro.Host = target.Addr
+	var triedNodes []string
+	var lastErr error
+	var cc net.Conn
 
-	log = log.WithFields(map[string]any{
-		"node": target.Name,
-		"dst":  fmt.Sprintf("%s/%s", target.Addr, network),
-	})
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Select a target node, excluding previously tried nodes
+		selectCtx := ctxvalue.ContextWithExcludeNodes(ctx, triedNodes)
+		var target *chain.Node
+		if host != "" {
+			target = &chain.Node{
+				Addr: host,
+			}
+		}
+		if h.hop != nil {
+			target = h.hop.Select(selectCtx,
+				hop.ProtocolSelectOption(proto),
+			)
+		}
+		if target == nil {
+			if lastErr != nil {
+				return lastErr
+			}
+			err := errors.New("node not available")
+			log.Error(err)
+			return err
+		}
 
-	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
+		// Track this node as tried
+		triedNodes = append(triedNodes, target.Addr)
 
-	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, target.Addr)
-	ro.Route = buf.String()
-	if err != nil {
-		log.Error(err)
-		// TODO: the router itself may be failed due to the failed node in the router,
-		// the dead marker may be a wrong operation.
+		if opts := target.Options(); opts != nil {
+			switch opts.Network {
+			case "unix":
+				network = opts.Network
+			default:
+			}
+		}
+
+		ro.Network = network
+		ro.Host = target.Addr
+
+		targetLog := log.WithFields(map[string]any{
+			"node": target.Name,
+			"dst":  fmt.Sprintf("%s/%s", target.Addr, network),
+		})
+
+		targetLog.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
+
+		var buf bytes.Buffer
+		cc, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, target.Addr)
+		ro.Route = buf.String()
+		if err != nil {
+			targetLog.Error(err)
+			// Mark node as failed for future selections
+			if marker := target.Marker(); marker != nil {
+				marker.Mark()
+			}
+			lastErr = err
+			// Try next node
+			continue
+		}
+
+		// Success - reset marker and proceed
 		if marker := target.Marker(); marker != nil {
-			marker.Mark()
+			marker.Reset()
 		}
-		return err
+		defer cc.Close()
+
+		cc = proxyproto.WrapClientConn(h.md.proxyProtocol, conn.RemoteAddr(), convertAddr(conn.LocalAddr()), cc)
+
+		t := time.Now()
+		targetLog.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
+		xnet.Transport(conn, cc)
+		targetLog.WithFields(map[string]any{
+			"duration": time.Since(t),
+		}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
+
+		return nil
 	}
-	defer cc.Close()
-	if marker := target.Marker(); marker != nil {
-		marker.Reset()
+
+	// All retries exhausted
+	if lastErr != nil {
+		return lastErr
 	}
-
-	cc = proxyproto.WrapClientConn(h.md.proxyProtocol, conn.RemoteAddr(), convertAddr(conn.LocalAddr()), cc)
-
-	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
-	xnet.Transport(conn, cc)
-	log.WithFields(map[string]any{
-		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
-
-	return nil
+	return errors.New("all nodes failed")
 }
 
 func (h *forwardHandler) checkRateLimit(addr net.Addr) bool {
