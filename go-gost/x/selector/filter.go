@@ -24,11 +24,12 @@ func FailFilter[T any](maxFails int, timeout time.Duration) selector.Filter[T] {
 }
 
 // Filter filters dead objects.
-// Note: We intentionally do NOT skip filtering when len(vs) <= 1.
-// This ensures that even a single dead node gets filtered out,
-// allowing the caller to know that no healthy nodes are available
-// and potentially trigger failover behavior.
+// For single-node case, skip filtering to ensure availability (matches upstream).
+// For multi-node case, filter out failed nodes to enable failover.
 func (f *failFilter[T]) Filter(ctx context.Context, vs ...T) []T {
+	if len(vs) <= 1 {
+		return vs
+	}
 	var l []T
 	for _, v := range vs {
 		maxFails := f.maxFails
