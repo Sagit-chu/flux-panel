@@ -466,7 +466,13 @@ func (w *WebSocketReporter) handleReceivedMessage(messageType int, message []byt
 			}
 
 			if cmdMsg.Type != "call" {
-				w.routeCommand(cmdMsg)
+				// TcpPing 诊断命令异步执行，避免阻塞其他命令
+				// 其他状态变更命令保持同步，确保顺序执行
+				if cmdMsg.Type == "TcpPing" {
+					go w.routeCommand(cmdMsg)
+				} else {
+					w.routeCommand(cmdMsg)
+				}
 			}
 		} else {
 			// 处理普通消息
@@ -477,7 +483,13 @@ func (w *WebSocketReporter) handleReceivedMessage(messageType int, message []byt
 				return
 			}
 			if cmdMsg.Type != "call" {
-				w.routeCommand(cmdMsg)
+				// TcpPing 诊断命令异步执行，避免阻塞其他命令
+				// 其他状态变更命令保持同步，确保顺序执行
+				if cmdMsg.Type == "TcpPing" {
+					go w.routeCommand(cmdMsg)
+				} else {
+					w.routeCommand(cmdMsg)
+				}
 			}
 		}
 
@@ -497,6 +509,7 @@ func (w *WebSocketReporter) routeCommand(cmd CommandMessage) {
 	fmt.Println("🔔 收到命令: ", string(jsonBytes))
 	var err error
 	var response CommandResponse
+	var needSaveConfig bool // 标记是否需要保存配置（只有状态变更命令才需要）
 
 	// 传递 requestId
 	response.RequestId = cmd.RequestId
@@ -506,65 +519,81 @@ func (w *WebSocketReporter) routeCommand(cmd CommandMessage) {
 	case "AddService":
 		err = w.handleAddService(cmd.Data)
 		response.Type = "AddServiceResponse"
+		needSaveConfig = true
 	case "UpdateService":
 		err = w.handleUpdateService(cmd.Data)
 		response.Type = "UpdateServiceResponse"
+		needSaveConfig = true
 	case "DeleteService":
 		err = w.handleDeleteService(cmd.Data)
 		response.Type = "DeleteServiceResponse"
+		needSaveConfig = true
 	case "PauseService":
 		err = w.handlePauseService(cmd.Data)
 		response.Type = "PauseServiceResponse"
+		needSaveConfig = true
 	case "ResumeService":
 		err = w.handleResumeService(cmd.Data)
 		response.Type = "ResumeServiceResponse"
+		needSaveConfig = true
 
 	// Chain 相关命令
 	case "AddChains":
 		err = w.handleAddChain(cmd.Data)
 		response.Type = "AddChainsResponse"
+		needSaveConfig = true
 	case "UpdateChains":
 		err = w.handleUpdateChain(cmd.Data)
 		response.Type = "UpdateChainsResponse"
+		needSaveConfig = true
 	case "DeleteChains":
 		err = w.handleDeleteChain(cmd.Data)
 		response.Type = "DeleteChainsResponse"
+		needSaveConfig = true
 
 	// Limiter 相关命令
 	case "AddLimiters":
 		err = w.handleAddLimiter(cmd.Data)
 		response.Type = "AddLimitersResponse"
+		needSaveConfig = true
 	case "UpdateLimiters":
 		err = w.handleUpdateLimiter(cmd.Data)
 		response.Type = "UpdateLimitersResponse"
+		needSaveConfig = true
 	case "DeleteLimiters":
 		err = w.handleDeleteLimiter(cmd.Data)
 		response.Type = "DeleteLimitersResponse"
+		needSaveConfig = true
 
-	// TCP Ping 诊断命令
+	// TCP Ping 诊断命令（只读，不需要保存配置）
 	case "TcpPing":
 		var tcpPingResult TcpPingResponse
 		tcpPingResult, err = w.handleTcpPing(cmd.Data)
 		response.Type = "TcpPingResponse"
 		response.Data = tcpPingResult
+		// needSaveConfig = false (默认值)
 
 	// Protocol blocking switches
 	case "SetProtocol":
 		err = w.handleSetProtocol(cmd.Data)
 		response.Type = "SetProtocolResponse"
+		needSaveConfig = true
 
 	default:
 		err = fmt.Errorf("未知命令类型: %s", cmd.Type)
 		response.Type = "UnknownCommandResponse"
 	}
 
+	// 只有状态变更命令才保存配置
+	if needSaveConfig {
+		saveConfig()
+	}
+
 	// 发送响应
 	if err != nil {
-		saveConfig()
 		response.Success = false
 		response.Message = err.Error()
 	} else {
-		saveConfig()
 		response.Success = true
 		response.Message = "OK"
 	}
