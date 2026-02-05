@@ -1301,11 +1301,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
             }
         }
         
-        if (result.isAllSuccess()) {
-            return R.ok(result);
-        } else {
-            return R.ok("部分操作失败", result);
-        }
+        return R.ok(result);
     }
 
     @Override
@@ -1358,11 +1354,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
             }
         }
         
-        if (result.isAllSuccess()) {
-            return R.ok(result);
-        } else {
-            return R.ok("部分操作失败", result);
-        }
+        return R.ok(result);
     }
 
     @Override
@@ -1455,11 +1447,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
             }
         }
         
-        if (result.isAllSuccess()) {
-            return R.ok(result);
-        } else {
-            return R.ok("部分操作失败", result);
-        }
+        return R.ok(result);
     }
 
 }

@@ -526,11 +526,7 @@ public class NodeServiceImpl extends ServiceImpl<NodeMapper, Node> implements No
             }
         }
         
-        if (result.isAllSuccess()) {
-            return R.ok(result);
-        } else {
-            return R.ok("部分操作失败", result);
-        }
+        return R.ok(result);
     }
 
 
