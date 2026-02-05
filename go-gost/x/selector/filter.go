@@ -2,8 +2,10 @@ package selector
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/selector"
 	mdutil "github.com/go-gost/x/metadata/util"
@@ -53,8 +55,21 @@ func (f *failFilter[T]) Filter(ctx context.Context, vs ...T) []T {
 
 		if mi, _ := any(v).(selector.Markable); mi != nil {
 			if marker := mi.Marker(); marker != nil {
-				if marker.Count() < int64(maxFails) ||
-					time.Since(marker.Time()) >= failTimeout {
+				count := marker.Count()
+				timeSince := time.Since(marker.Time())
+				passed := count < int64(maxFails) || timeSince >= failTimeout
+
+				// Debug logging for failover analysis
+				nodeName := "unknown"
+				nodeAddr := "unknown"
+				if node, ok := any(v).(*chain.Node); ok {
+					nodeName = node.Name
+					nodeAddr = node.Addr
+				}
+				fmt.Printf("[FailFilter] node=%s addr=%s count=%d maxFails=%d timeSince=%v failTimeout=%v passed=%v\n",
+					nodeName, nodeAddr, count, maxFails, timeSince, failTimeout, passed)
+
+				if passed {
 					l = append(l, v)
 				}
 				continue

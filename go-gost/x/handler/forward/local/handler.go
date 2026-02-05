@@ -192,6 +192,8 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	var lastErr error
 	var cc net.Conn
 
+	h.options.Logger.Debugf("[handler.retry] starting retry loop: maxRetries=%d", maxRetries)
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Select a target node, excluding previously tried nodes
 		selectCtx := ctxvalue.ContextWithExcludeNodes(ctx, triedNodes)
@@ -202,11 +204,14 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 			)
 		}
 		if target == nil {
+			h.options.Logger.Debugf("[handler.retry] attempt=%d target=nil, triedNodes=%v", attempt, triedNodes)
 			if lastErr != nil {
 				return lastErr
 			}
 			return errors.New("node not available")
 		}
+
+		h.options.Logger.Debugf("[handler.retry] attempt=%d selected node=%s addr=%s", attempt, target.Name, target.Addr)
 
 		// Track this node as tried
 		triedNodes = append(triedNodes, target.Addr)
@@ -233,6 +238,8 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 			// Mark node as failed for future selections
 			if marker := target.Marker(); marker != nil {
 				marker.Mark()
+				h.options.Logger.Debugf("[handler.retry] attempt=%d dial failed, marked node=%s count=%d err=%v",
+					attempt, target.Addr, marker.Count(), err)
 			}
 			lastErr = err
 			// Try next node

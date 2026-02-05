@@ -149,6 +149,9 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		excludeSet[addr] = true
 	}
 
+	// Debug logging for failover analysis
+	log.Debugf("[hop.Select] excludeNodes=%v, totalNodes=%d", excludeNodes, len(p.Nodes()))
+
 	var nodes []*chain.Node
 	for _, node := range p.Nodes() {
 		if node == nil {
@@ -213,7 +216,9 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	// FailFilter will exclude recently-failed nodes, allowing traffic to
 	// be routed to healthy alternatives.
 	if s := p.options.selector; s != nil {
+		log.Debugf("[hop.Select] calling selector.Select with %d nodes", len(nodes))
 		if node := s.Select(ctx, nodes...); node != nil {
+			log.Debugf("[hop.Select] selected node=%s addr=%s", node.Name, node.Addr)
 			return node
 		}
 		// All nodes filtered out by FailFilter - all are marked as failed.
