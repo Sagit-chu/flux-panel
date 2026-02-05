@@ -252,7 +252,14 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 		defer cc.Close()
 
-		xnet.Transport(conn, cc)
+		if err := xnet.Transport(conn, cc); err != nil {
+			if marker := target.Marker(); marker != nil {
+				marker.Mark()
+				h.options.Logger.Debugf("[handler.transport] transport failed, marked node=%s count=%d err=%v",
+					target.Addr, marker.Count(), err)
+			}
+			return err
+		}
 		return nil
 	}
 
