@@ -204,17 +204,11 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		return nodes[0]
 	}
 
-	// For single-node case: bypass selector/FailFilter to ensure availability.
-	// The marker system still works for metrics, but we don't block requests
-	// based on recent failures - the connection will be attempted regardless.
-	// This matches upstream go-gost/x behavior.
-	if len(nodes) == 1 {
-		return nodes[0]
-	}
-
-	// Multi-node case: use selector with FailFilter for proper failover.
+	// Use selector with FailFilter for proper failover.
 	// FailFilter will exclude recently-failed nodes, allowing traffic to
 	// be routed to healthy alternatives.
+	// Note: FailFilter has a safety guard (len <= 1 returns as-is) to ensure
+	// the last remaining node is never permanently blocked.
 	if s := p.options.selector; s != nil {
 		log.Debugf("[hop.Select] calling selector.Select with %d nodes", len(nodes))
 		if node := s.Select(ctx, nodes...); node != nil {
