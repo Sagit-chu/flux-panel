@@ -696,10 +696,10 @@ export default function TunnelPage() {
         setBatchDeleteModalOpen(false);
         loadData();
       } else {
-        toast.error(res.msg || "批量删除失败");
+        toast.error(res.msg || "删除失败");
       }
     } catch (e: any) {
-      toast.error(e.message || "批量删除失败");
+      toast.error(e.message || "删除失败");
     } finally {
       setBatchLoading(false);
     }
@@ -721,10 +721,10 @@ export default function TunnelPage() {
         setSelectMode(false);
         loadData();
       } else {
-        toast.error(res.msg || "批量重新下发失败");
+        toast.error(res.msg || "下发失败");
       }
     } catch (e: any) {
-      toast.error(e.message || "批量重新下发失败");
+      toast.error(e.message || "下发失败");
     } finally {
       setBatchLoading(false);
     }
@@ -845,7 +845,7 @@ export default function TunnelPage() {
             color={selectMode ? "warning" : "default"}
             onPress={toggleSelectMode}
           >
-            {selectMode ? "退出选择" : "批量操作"}
+            {selectMode ? "退出" : "批量"}
           </Button>
           <Button color="primary" size="sm" variant="flat" onPress={handleAdd}>
             新增
@@ -860,7 +860,7 @@ export default function TunnelPage() {
             全选
           </Button>
           <Button size="sm" variant="flat" onPress={deselectAll}>
-            取消全选
+            清空
           </Button>
           <Button
             size="sm"
@@ -868,7 +868,7 @@ export default function TunnelPage() {
             variant="flat"
             onPress={() => setBatchDeleteModalOpen(true)}
           >
-            批量删除
+            删除
           </Button>
           <Button
             size="sm"
@@ -877,7 +877,7 @@ export default function TunnelPage() {
             onPress={handleBatchRedeploy}
             isLoading={batchLoading}
           >
-            批量重新下发
+            下发
           </Button>
         </div>
       )}
@@ -2514,7 +2514,7 @@ export default function TunnelPage() {
         <ModalContent>
           {(onClose) => (
             <>
-              <ModalHeader>确认批量删除</ModalHeader>
+              <ModalHeader>确认删除</ModalHeader>
               <ModalBody>
                 <p>确定要删除选中的 {selectedIds.size} 项隧道吗？此操作不可撤销，相关转发也将被删除。</p>
               </ModalBody>
