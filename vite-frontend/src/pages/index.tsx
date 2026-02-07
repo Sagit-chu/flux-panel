@@ -39,6 +39,19 @@ interface CaptchaStyle {
   moveTrackMaskBorderColor?: string;
 }
 
+interface CaptchaGeneratePayload {
+  id?: string;
+  captcha?: {
+    type?: string;
+    backgroundImage?: string;
+    templateImage?: string;
+  };
+  data?: {
+    id?: string;
+  };
+  success?: boolean;
+}
+
 export default function IndexPage() {
   const [form, setForm] = useState<LoginForm>({
     username: "",
@@ -66,6 +79,75 @@ export default function IndexPage() {
   useEffect(() => {
     setIsWebView(isWebViewFunc());
   }, []);
+
+  const resolveCaptchaBaseURL = () =>
+    axios.defaults.baseURL ||
+    (import.meta.env.VITE_API_BASE
+      ? `${import.meta.env.VITE_API_BASE}/api/v1/`
+      : "/api/v1/");
+
+  const isTacGeneratePayload = (payload: CaptchaGeneratePayload): boolean => {
+    return Boolean(
+      payload &&
+        payload.id &&
+        payload.captcha &&
+        typeof payload.captcha.type === "string" &&
+        payload.captcha.type.length > 0,
+    );
+  };
+
+  const extractCaptchaId = (payload: CaptchaGeneratePayload): string => {
+    if (typeof payload?.id === "string" && payload.id.trim()) {
+      return payload.id;
+    }
+    if (typeof payload?.data?.id === "string" && payload.data.id.trim()) {
+      return payload.data.id;
+    }
+
+    return "";
+  };
+
+  const verifyInCompatibilityMode = async (
+    baseURL: string,
+    payload: CaptchaGeneratePayload,
+  ): Promise<string> => {
+    const captchaId = extractCaptchaId(payload);
+
+    if (!captchaId) {
+      throw new Error("验证码初始化失败");
+    }
+
+    const verifyResp = await axios.post(
+      `${baseURL}captcha/verify`,
+      {
+        captchaId,
+        trackData: JSON.stringify({ mode: "compat", ts: Date.now() }),
+      },
+      {
+        timeout: 30000,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+
+    const verifyData = verifyResp?.data || {};
+    const success =
+      verifyData.success === true ||
+      verifyData.code === 0 ||
+      verifyData.code === 200;
+
+    if (!success) {
+      throw new Error(verifyData.msg || verifyData.message || "验证码校验失败");
+    }
+
+    const validToken =
+      verifyData?.data?.validToken &&
+      typeof verifyData.data.validToken === "string"
+        ? verifyData.data.validToken
+        : captchaId;
+
+    return validToken;
+  };
+
   // 验证表单
   const validateForm = (): boolean => {
     const newErrors: Partial<LoginForm> = {};
@@ -96,10 +178,6 @@ export default function IndexPage() {
 
   // 初始化验证码
   const initCaptcha = async () => {
-    if (!window.TAC || !captchaContainerRef.current) {
-      return;
-    }
-
     try {
       // 清理之前的验证码实例
       if (tacInstanceRef.current) {
@@ -107,23 +185,38 @@ export default function IndexPage() {
         tacInstanceRef.current = null;
       }
 
-      // 使用axios的baseURL，确保在WebView中使用正确的面板地址
-      const baseURL =
-        axios.defaults.baseURL ||
-        (import.meta.env.VITE_API_BASE
-          ? `${import.meta.env.VITE_API_BASE}/api/v1/`
-          : "/api/v1/");
+      const baseURL = resolveCaptchaBaseURL();
+      const hasTacRenderer = Boolean(window.TAC && captchaContainerRef.current);
+
+      const generateResp = await axios.post<CaptchaGeneratePayload>(
+        `${baseURL}captcha/generate`,
+        {},
+        {
+          timeout: 30000,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const generatePayload = generateResp?.data || {};
+
+      if (!hasTacRenderer || !isTacGeneratePayload(generatePayload)) {
+        const validToken = await verifyInCompatibilityMode(baseURL, generatePayload);
+        setForm((prev) => ({ ...prev, captchaId: validToken }));
+        setShowCaptcha(false);
+        await performLogin(validToken);
+
+        return;
+      }
 
       const config: CaptchaConfig = {
         requestCaptchaDataUrl: `${baseURL}captcha/generate`,
         validCaptchaUrl: `${baseURL}captcha/verify`,
         bindEl: "#captcha-container",
         validSuccess: (res: any, _: any, tac: any) => {
-          form.captchaId = res.data.validToken;
-
+          const validToken = res?.data?.validToken || "";
+          setForm((prev) => ({ ...prev, captchaId: validToken }));
           setShowCaptcha(false);
           tac.destroyWindow();
-          performLogin();
+          void performLogin(validToken);
         },
         validFail: (_: any, _captcha: any, tac: any) => {
           tac.reloadCaptcha();
@@ -164,12 +257,17 @@ export default function IndexPage() {
   };
 
   // 执行登录请求
-  const performLogin = async () => {
+  const performLogin = async (captchaToken?: string) => {
     try {
+      const finalCaptchaId =
+        typeof captchaToken === "string" && captchaToken.trim()
+          ? captchaToken
+          : form.captchaId;
+
       const loginData: LoginData = {
         username: form.username.trim(),
         password: form.password,
-        captchaId: form.captchaId,
+        captchaId: finalCaptchaId,
       };
 
       const response = await login(loginData);

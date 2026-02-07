@@ -258,3 +258,6 @@ doraemon.jks
 device.id
 commit.sh
 sql/
+!go-backend/internal/store/sqlite/sql/
+!go-backend/internal/store/sqlite/sql/schema.sql
+!go-backend/internal/store/sqlite/sql/data.sql

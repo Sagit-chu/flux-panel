@@ -337,7 +337,7 @@ update_panel() {
   fi
 
   # 先发送 SIGTERM 信号，让应用优雅关闭
-  docker stop -t 30 springboot-backend 2>/dev/null || true
+  docker stop -t 30 go-backend 2>/dev/null || true
   docker stop -t 10 vite-frontend 2>/dev/null || true
   
   # 等待 WAL 文件同步
@@ -359,8 +359,8 @@ update_panel() {
   # 检查后端容器健康状态
   echo "🔍 检查后端服务状态..."
   for i in {1..90}; do
-    if docker ps --format "{{.Names}}" | grep -q "^springboot-backend$"; then
-      BACKEND_HEALTH=$(docker inspect -f '{{.State.Health.Status}}' springboot-backend 2>/dev/null || echo "unknown")
+    if docker ps --format "{{.Names}}" | grep -q "^go-backend$"; then
+      BACKEND_HEALTH=$(docker inspect -f '{{.State.Health.Status}}' go-backend 2>/dev/null || echo "unknown")
       if [[ "$BACKEND_HEALTH" == "healthy" ]]; then
         echo "✅ 后端服务健康检查通过"
         break
@@ -376,7 +376,7 @@ update_panel() {
     fi
     if [ $i -eq 90 ]; then
       echo "❌ 后端服务启动超时（90秒）"
-      echo "🔍 当前状态：$(docker inspect -f '{{.State.Health.Status}}' springboot-backend 2>/dev/null || echo '容器不存在')"
+      echo "🔍 当前状态：$(docker inspect -f '{{.State.Health.Status}}' go-backend 2>/dev/null || echo '容器不存在')"
       echo "🛑 更新终止"
       return 1
     fi
