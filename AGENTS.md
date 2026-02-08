@@ -36,7 +36,7 @@ FLVX (formerly Flux Panel) is a traffic forwarding management system built on a 
 ## CODE MAP
 | Symbol | Type | Location | Role |
 |--------|------|----------|------|
-| `flux-panel` | Project | `.` | Root directory |
+| `flvx` | Project | `.` | Root directory |
 | `main` | Func | `go-backend/cmd/paneld/main.go` | Backend Entry |
 | `App` | Component | `vite-frontend/src/App.tsx` | Frontend Entry |
 | `main` | Func | `go-gost/main.go` | Agent Entry |
