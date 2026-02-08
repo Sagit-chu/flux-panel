@@ -841,6 +841,13 @@ func (h *Handler) userTunnelUpdate(w http.ResponseWriter, r *http.Request) {
 		response.WriteJSON(w, response.Err(-2, err.Error()))
 		return
 	}
+
+	// Fetch details to sync forwards
+	var userID, tunnelID int64
+	if err := h.repo.DB().QueryRow("SELECT user_id, tunnel_id FROM user_tunnel WHERE id = ?", id).Scan(&userID, &tunnelID); err == nil {
+		h.syncUserTunnelForwards(userID, tunnelID)
+	}
+
 	response.WriteJSON(w, response.OKEmpty())
 }
 
@@ -2683,7 +2690,24 @@ func (h *Handler) upsertUserTunnel(req map[string]interface{}) error {
 
 	_, err = db.Exec(`UPDATE user_tunnel SET speed_id = ?, flow = ?, num = ?, exp_time = ?, flow_reset_time = ?, status = ? WHERE id = ?`,
 		newSpeedID, newFlow, newNum, newExpTime, newFlowReset, newStatus, existingID)
+
+	if err == nil {
+		h.syncUserTunnelForwards(userID, tunnelID)
+	}
 	return err
+}
+
+func (h *Handler) syncUserTunnelForwards(userID, tunnelID int64) {
+	forwards, err := h.listForwardsByTunnel(tunnelID)
+	if err != nil {
+		return
+	}
+	for i := range forwards {
+		f := &forwards[i]
+		if f.UserID == userID {
+			_ = h.syncForwardServices(f, "UpdateService", true)
+		}
+	}
 }
 
 func asAnySlice(v interface{}) []interface{} {
