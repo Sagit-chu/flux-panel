@@ -37,26 +37,29 @@ func updateLimiter(req updateLimiterRequest) error {
 
 	name := strings.TrimSpace(req.Limiter)
 
-	if !registry.TrafficLimiterRegistry().IsRegistered(name) {
-		return errors.New("limiter " + name + " not found")
+	if registry.TrafficLimiterRegistry().IsRegistered(name) {
+		registry.TrafficLimiterRegistry().Unregister(name)
 	}
 
 	req.Data.Name = name
 
 	v := parser.ParseTrafficLimiter(&req.Data)
 
-	registry.TrafficLimiterRegistry().Unregister(name)
-
 	if err := registry.TrafficLimiterRegistry().Register(name, v); err != nil {
 		return errors.New("limiter " + name + " already exists")
 	}
 
 	config.OnUpdate(func(c *config.Config) error {
+		found := false
 		for i := range c.Limiters {
 			if c.Limiters[i].Name == name {
 				c.Limiters[i] = &req.Data
+				found = true
 				break
 			}
+		}
+		if !found {
+			c.Limiters = append(c.Limiters, &req.Data)
 		}
 		return nil
 	})
@@ -68,10 +71,9 @@ func deleteLimiter(req deleteLimiterRequest) error {
 
 	name := strings.TrimSpace(req.Limiter)
 
-	if !registry.TrafficLimiterRegistry().IsRegistered(name) {
-		return errors.New("limiter " + name + " not found")
+	if registry.TrafficLimiterRegistry().IsRegistered(name) {
+		registry.TrafficLimiterRegistry().Unregister(name)
 	}
-	registry.TrafficLimiterRegistry().Unregister(name)
 
 	config.OnUpdate(func(c *config.Config) error {
 		limiteres := c.Limiters

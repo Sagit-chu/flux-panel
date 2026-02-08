@@ -87,36 +87,32 @@ func updateServices(req updateServicesRequest) error {
 		return errors.New("services list cannot be empty")
 	}
 
-	// 第一阶段：验证所有服务存在
-	for _, serviceConfig := range req.Data {
-		name := strings.TrimSpace(serviceConfig.Name)
+	// 第一阶段：验证所有服务名称有效性
+	for i := range req.Data {
+		name := strings.TrimSpace(req.Data[i].Name)
 		if name == "" {
 			return errors.New("service name is required")
 		}
-		serviceConfig.Name = name
-
-		old := registry.ServiceRegistry().Get(name)
-		if old == nil {
-			return errors.New("service " + name + " not found")
-		}
+		req.Data[i].Name = name
 	}
 
-	// 第二阶段：按照原来的updateService逻辑，逐个更新服务
-	for _, serviceConfig := range req.Data {
-		name := strings.TrimSpace(serviceConfig.Name)
-		serviceConfig.Name = name
+	// 第二阶段：逐个更新服务（Upsert模式：存在则更新，不存在则创建）
+	for i := range req.Data {
+		serviceConfig := &req.Data[i]
+		name := serviceConfig.Name
 
 		// 1. 获取旧服务
 		old := registry.ServiceRegistry().Get(name)
 
-		// 2. 关闭旧服务
-		old.Close()
-
-		// 3. 从注册表移除旧服务
-		registry.ServiceRegistry().Unregister(name)
+		// 2. 关闭旧服务 (如果存在)
+		if old != nil {
+			old.Close()
+			// 3. 从注册表移除旧服务
+			registry.ServiceRegistry().Unregister(name)
+		}
 
 		// 4. 解析新服务配置
-		svc, err := parser.ParseService(&serviceConfig)
+		svc, err := parser.ParseService(serviceConfig)
 		if err != nil {
 			return errors.New("create service " + name + " failed: " + err.Error())
 		}
@@ -133,12 +129,19 @@ func updateServices(req updateServicesRequest) error {
 
 	// 第三阶段：更新配置
 	config.OnUpdate(func(c *config.Config) error {
-		for _, serviceConfig := range req.Data {
-			for i := range c.Services {
-				if c.Services[i].Name == serviceConfig.Name {
-					c.Services[i] = &serviceConfig
+		for i := range req.Data {
+			// 创建副本以确保指针安全
+			cfgCopy := req.Data[i]
+			found := false
+			for j := range c.Services {
+				if c.Services[j].Name == cfgCopy.Name {
+					c.Services[j] = &cfgCopy
+					found = true
 					break
 				}
+			}
+			if !found {
+				c.Services = append(c.Services, &cfgCopy)
 			}
 		}
 		return nil
@@ -158,28 +161,34 @@ func deleteServices(req deleteServicesRequest) error {
 		name    string
 		service service.Service
 	}
+	var namesToRemove []string
 
 	for _, serviceName := range req.Services {
 		name := strings.TrimSpace(serviceName)
 		if name == "" {
 			return errors.New("service name is required")
 		}
+		namesToRemove = append(namesToRemove, name)
 
 		svc := registry.ServiceRegistry().Get(name)
-		if svc == nil {
-			return errors.New("service " + name + " not found")
+		if svc != nil {
+			servicesToDelete = append(servicesToDelete, struct {
+				name    string
+				service service.Service
+			}{name, svc})
 		}
-
-		servicesToDelete = append(servicesToDelete, struct {
-			name    string
-			service service.Service
-		}{name, svc})
 	}
 
 	// 第二阶段：删除所有服务
 	for _, std := range servicesToDelete {
 		registry.ServiceRegistry().Unregister(std.name)
 		std.service.Close()
+	}
+	// 确保所有请求删除的服务都从注册表中移除（即使之前未找到实例）
+	for _, name := range namesToRemove {
+		if registry.ServiceRegistry().IsRegistered(name) {
+			registry.ServiceRegistry().Unregister(name)
+		}
 	}
 
 	// 第三阶段：更新配置
@@ -188,8 +197,8 @@ func deleteServices(req deleteServicesRequest) error {
 		c.Services = nil
 		for _, s := range services {
 			shouldDelete := false
-			for _, std := range servicesToDelete {
-				if s.Name == std.name {
+			for _, name := range namesToRemove {
+				if s.Name == name {
 					shouldDelete = true
 					break
 				}
