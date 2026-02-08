@@ -375,7 +375,7 @@ export default function AdminLayout({
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                flux-panel
+                FLVX
               </a>
             </p>
           </div>
