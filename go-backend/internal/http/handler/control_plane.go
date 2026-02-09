@@ -1045,7 +1045,10 @@ func buildForwardServiceConfigs(baseName string, forward *forwardRecord, tunnel 
 			service["metadata"] = map[string]interface{}{"interface": node.InterfaceName}
 		}
 		if limiter != nil && *limiter > 0 {
-			service["limiter"] = strconv.Itoa(*limiter)
+			// Convert Mbps to Bytes/s
+			// 1 Mbps = 1,000,000 bits/s = 125,000 Bytes/s
+			// We use decimal Mbps standard as is common in networking
+			service["limiter"] = strconv.Itoa(*limiter * 125000)
 		}
 		services = append(services, service)
 	}

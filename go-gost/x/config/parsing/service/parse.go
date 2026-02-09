@@ -193,6 +193,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 					xtraffic.LimitsOption(fmt.Sprintf("%s %d %d", xtraffic.ServiceLimitKey, val, val)),
 				)
 			}
+			if lim == nil {
+				lim = xtraffic.NewTrafficLimiter(
+					xtraffic.LimitsOption(fmt.Sprintf("%s %s %s", xtraffic.ServiceLimitKey, cfg.Limiter, cfg.Limiter)),
+				)
+			}
 		}
 		trafficLimiter = listener.TrafficLimiterOption(
 			cache_limiter.NewCachedTrafficLimiter(
