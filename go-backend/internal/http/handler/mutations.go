@@ -1518,12 +1518,15 @@ func (h *Handler) speedLimitCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UnixMilli()
-	_, err := h.repo.DB().Exec(`INSERT INTO speed_limit(name, speed, tunnel_id, tunnel_name, created_time, updated_time, status) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-		name, asInt(req["speed"], 100), tunnelID, tunnelName, now, now, asInt(req["status"], 1))
+	speed := asInt(req["speed"], 100)
+	res, err := h.repo.DB().Exec(`INSERT INTO speed_limit(name, speed, tunnel_id, tunnel_name, created_time, updated_time, status) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+		name, speed, tunnelID, tunnelName, now, now, asInt(req["status"], 1))
 	if err != nil {
 		response.WriteJSON(w, response.Err(-2, err.Error()))
 		return
 	}
+	id, _ := res.LastInsertId()
+	_ = h.sendLimiterConfig(id, speed, tunnelID)
 	response.WriteJSON(w, response.OKEmpty())
 }
 
@@ -1545,12 +1548,14 @@ func (h *Handler) speedLimitUpdate(w http.ResponseWriter, r *http.Request) {
 		response.WriteJSON(w, response.ErrDefault("隧道不存在"))
 		return
 	}
+	speed := asInt(req["speed"], 100)
 	_, err := h.repo.DB().Exec(`UPDATE speed_limit SET name=?, speed=?, tunnel_id=?, tunnel_name=?, status=?, updated_time=? WHERE id=?`,
-		asString(req["name"]), asInt(req["speed"], 100), tunnelID, tunnelName, asInt(req["status"], 1), time.Now().UnixMilli(), id)
+		asString(req["name"]), speed, tunnelID, tunnelName, asInt(req["status"], 1), time.Now().UnixMilli(), id)
 	if err != nil {
 		response.WriteJSON(w, response.Err(-2, err.Error()))
 		return
 	}
+	_ = h.sendLimiterConfig(id, speed, tunnelID)
 	response.WriteJSON(w, response.OKEmpty())
 }
 
@@ -1559,10 +1564,16 @@ func (h *Handler) speedLimitDelete(w http.ResponseWriter, r *http.Request) {
 	if id <= 0 {
 		return
 	}
+	var tunnelID int64
+	_ = h.repo.DB().QueryRow(`SELECT tunnel_id FROM speed_limit WHERE id = ?`, id).Scan(&tunnelID)
+
 	_, err := h.repo.DB().Exec(`DELETE FROM speed_limit WHERE id = ?`, id)
 	if err != nil {
 		response.WriteJSON(w, response.Err(-2, err.Error()))
 		return
+	}
+	if tunnelID > 0 {
+		_ = h.sendDeleteLimiterConfig(id, tunnelID)
 	}
 	response.WriteJSON(w, response.OKEmpty())
 }
