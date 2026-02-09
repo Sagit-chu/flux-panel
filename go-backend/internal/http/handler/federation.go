@@ -25,6 +25,7 @@ type createPeerShareRequest struct {
 	ExpiryTime     int64  `json:"expiryTime"`
 	PortRangeStart int    `json:"portRangeStart"`
 	PortRangeEnd   int    `json:"portRangeEnd"`
+	AllowedDomains string `json:"allowedDomains"`
 }
 
 type deletePeerShareRequest struct {
@@ -111,6 +112,7 @@ func (h *Handler) federationShareCreate(w http.ResponseWriter, r *http.Request) 
 		IsActive:       1,
 		CreatedTime:    now,
 		UpdatedTime:    now,
+		AllowedDomains: req.AllowedDomains,
 	}
 
 	if err := h.repo.CreatePeerShare(share); err != nil {
@@ -158,8 +160,14 @@ func (h *Handler) nodeImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	domainCfg, _ := h.repo.GetConfigByName("panel_domain")
+	localDomain := ""
+	if domainCfg != nil {
+		localDomain = domainCfg.Value
+	}
+
 	fc := client.NewFederationClient()
-	info, err := fc.Connect(req.RemoteURL, req.Token)
+	info, err := fc.Connect(req.RemoteURL, req.Token, localDomain)
 	if err != nil {
 		response.WriteJSON(w, response.Err(-2, "Failed to connect: "+err.Error()))
 		return
@@ -240,6 +248,26 @@ func (h *Handler) authPeer(next http.HandlerFunc) http.HandlerFunc {
 		if share.ExpiryTime > 0 && share.ExpiryTime < time.Now().UnixMilli() {
 			response.WriteJSON(w, response.Err(403, "Share expired"))
 			return
+		}
+
+		if share.AllowedDomains != "" {
+			clientDomain := r.Header.Get("X-Panel-Domain")
+			if clientDomain == "" {
+				response.WriteJSON(w, response.Err(403, "Domain verification required"))
+				return
+			}
+			allowed := false
+			domains := strings.Split(share.AllowedDomains, ",")
+			for _, d := range domains {
+				if strings.TrimSpace(d) == clientDomain {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				response.WriteJSON(w, response.Err(403, "Domain not allowed"))
+				return
+			}
 		}
 
 		next(w, r)

@@ -38,13 +38,16 @@ func NewFederationClient() *FederationClient {
 	}
 }
 
-func (c *FederationClient) Connect(url, token string) (*RemoteNodeInfo, error) {
+func (c *FederationClient) Connect(url, token, localDomain string) (*RemoteNodeInfo, error) {
 	url = strings.TrimSuffix(url, "/")
 	req, err := http.NewRequest("POST", url+"/api/v1/federation/connect", nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	if localDomain != "" {
+		req.Header.Set("X-Panel-Domain", localDomain)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.client.Do(req)
@@ -73,7 +76,7 @@ func (c *FederationClient) Connect(url, token string) (*RemoteNodeInfo, error) {
 	return &res.Data, nil
 }
 
-func (c *FederationClient) CreateTunnel(url, token string, protocol string, remotePort int, target string) (*RemoteTunnelResponse, error) {
+func (c *FederationClient) CreateTunnel(url, token, localDomain, protocol string, remotePort int, target string) (*RemoteTunnelResponse, error) {
 	url = strings.TrimSuffix(url, "/")
 	payload := map[string]interface{}{
 		"protocol":   protocol,
@@ -86,6 +89,9 @@ func (c *FederationClient) CreateTunnel(url, token string, protocol string, remo
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	if localDomain != "" {
+		req.Header.Set("X-Panel-Domain", localDomain)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.client.Do(req)

@@ -197,6 +197,7 @@ export const createPeerShare = (data: {
   expiryTime?: number;
   portRangeStart?: number;
   portRangeEnd?: number;
+  allowedDomains?: string;
 }) => Network.post("/federation/share/create", data);
 export const deletePeerShare = (id: number) =>
   Network.post("/federation/share/delete", { id });

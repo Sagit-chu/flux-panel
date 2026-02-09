@@ -543,7 +543,12 @@ func (h *Handler) tunnelCreate(w http.ResponseWriter, r *http.Request) {
 				}
 
 				if targetPort > 0 && targetAddr != "" {
-					_, err := fc.CreateTunnel(rUrl.String, rToken.String, targetProto, targetPort, targetAddr)
+					domainCfg, _ := h.repo.GetConfigByName("panel_domain")
+					localDomain := ""
+					if domainCfg != nil {
+						localDomain = domainCfg.Value
+					}
+					_, err := fc.CreateTunnel(rUrl.String, rToken.String, localDomain, targetProto, targetPort, targetAddr)
 					if err != nil {
 						response.WriteJSON(w, response.ErrDefault("Remote tunnel creation failed: "+err.Error()))
 						return

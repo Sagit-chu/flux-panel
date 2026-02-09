@@ -121,6 +121,7 @@ type PeerShare struct {
 	IsActive       int    `json:"isActive"`
 	CreatedTime    int64  `json:"createdTime"`
 	UpdatedTime    int64  `json:"updatedTime"`
+	AllowedDomains string `json:"allowedDomains"`
 }
 
 func Open(path string) (*Repository, error) {
@@ -1238,10 +1239,23 @@ func ensurePeerSchema(db *sql.DB) error {
 		current_flow INTEGER DEFAULT 0,
 		is_active INTEGER DEFAULT 1,
 		created_time INTEGER NOT NULL,
-		updated_time INTEGER NOT NULL
+		updated_time INTEGER NOT NULL,
+		allowed_domains TEXT DEFAULT ''
 	)`)
 	if err != nil {
 		return fmt.Errorf("create peer_share: %w", err)
+	}
+
+	// Add allowed_domains column if it doesn't exist (for existing tables)
+	var dummy interface{}
+	err = db.QueryRow("SELECT allowed_domains FROM peer_share LIMIT 1").Scan(&dummy)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such column") {
+			_, err = db.Exec("ALTER TABLE peer_share ADD COLUMN allowed_domains TEXT DEFAULT ''")
+			if err != nil {
+				log.Printf("failed to add column allowed_domains to peer_share: %v", err)
+			}
+		}
 	}
 
 	columns := map[string]string{
@@ -1271,9 +1285,9 @@ func (r *Repository) CreatePeerShare(share *PeerShare) error {
 		return errors.New("repository not initialized")
 	}
 	_, err := r.db.Exec(`
-		INSERT INTO peer_share(name, node_id, token, max_bandwidth, expiry_time, port_range_start, port_range_end, current_flow, is_active, created_time, updated_time)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, share.Name, share.NodeID, share.Token, share.MaxBandwidth, share.ExpiryTime, share.PortRangeStart, share.PortRangeEnd, share.CurrentFlow, share.IsActive, share.CreatedTime, share.UpdatedTime)
+		INSERT INTO peer_share(name, node_id, token, max_bandwidth, expiry_time, port_range_start, port_range_end, current_flow, is_active, created_time, updated_time, allowed_domains)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, share.Name, share.NodeID, share.Token, share.MaxBandwidth, share.ExpiryTime, share.PortRangeStart, share.PortRangeEnd, share.CurrentFlow, share.IsActive, share.CreatedTime, share.UpdatedTime, share.AllowedDomains)
 	return err
 }
 
@@ -1282,9 +1296,9 @@ func (r *Repository) UpdatePeerShare(share *PeerShare) error {
 		return errors.New("repository not initialized")
 	}
 	_, err := r.db.Exec(`
-		UPDATE peer_share SET name=?, max_bandwidth=?, expiry_time=?, port_range_start=?, port_range_end=?, is_active=?, updated_time=?
+		UPDATE peer_share SET name=?, max_bandwidth=?, expiry_time=?, port_range_start=?, port_range_end=?, is_active=?, updated_time=?, allowed_domains=?
 		WHERE id=?
-	`, share.Name, share.MaxBandwidth, share.ExpiryTime, share.PortRangeStart, share.PortRangeEnd, share.IsActive, share.UpdatedTime, share.ID)
+	`, share.Name, share.MaxBandwidth, share.ExpiryTime, share.PortRangeStart, share.PortRangeEnd, share.IsActive, share.UpdatedTime, share.AllowedDomains, share.ID)
 	return err
 }
 
@@ -1300,9 +1314,9 @@ func (r *Repository) GetPeerShare(id int64) (*PeerShare, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("repository not initialized")
 	}
-	row := r.db.QueryRow(`SELECT id, name, node_id, token, max_bandwidth, expiry_time, port_range_start, port_range_end, current_flow, is_active, created_time, updated_time FROM peer_share WHERE id = ?`, id)
+	row := r.db.QueryRow(`SELECT id, name, node_id, token, max_bandwidth, expiry_time, port_range_start, port_range_end, current_flow, is_active, created_time, updated_time, allowed_domains FROM peer_share WHERE id = ?`, id)
 	var s PeerShare
-	if err := row.Scan(&s.ID, &s.Name, &s.NodeID, &s.Token, &s.MaxBandwidth, &s.ExpiryTime, &s.PortRangeStart, &s.PortRangeEnd, &s.CurrentFlow, &s.IsActive, &s.CreatedTime, &s.UpdatedTime); err != nil {
+	if err := row.Scan(&s.ID, &s.Name, &s.NodeID, &s.Token, &s.MaxBandwidth, &s.ExpiryTime, &s.PortRangeStart, &s.PortRangeEnd, &s.CurrentFlow, &s.IsActive, &s.CreatedTime, &s.UpdatedTime, &s.AllowedDomains); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -1315,9 +1329,9 @@ func (r *Repository) GetPeerShareByToken(token string) (*PeerShare, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("repository not initialized")
 	}
-	row := r.db.QueryRow(`SELECT id, name, node_id, token, max_bandwidth, expiry_time, port_range_start, port_range_end, current_flow, is_active, created_time, updated_time FROM peer_share WHERE token = ?`, token)
+	row := r.db.QueryRow(`SELECT id, name, node_id, token, max_bandwidth, expiry_time, port_range_start, port_range_end, current_flow, is_active, created_time, updated_time, allowed_domains FROM peer_share WHERE token = ?`, token)
 	var s PeerShare
-	if err := row.Scan(&s.ID, &s.Name, &s.NodeID, &s.Token, &s.MaxBandwidth, &s.ExpiryTime, &s.PortRangeStart, &s.PortRangeEnd, &s.CurrentFlow, &s.IsActive, &s.CreatedTime, &s.UpdatedTime); err != nil {
+	if err := row.Scan(&s.ID, &s.Name, &s.NodeID, &s.Token, &s.MaxBandwidth, &s.ExpiryTime, &s.PortRangeStart, &s.PortRangeEnd, &s.CurrentFlow, &s.IsActive, &s.CreatedTime, &s.UpdatedTime, &s.AllowedDomains); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -1330,7 +1344,7 @@ func (r *Repository) ListPeerShares() ([]PeerShare, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("repository not initialized")
 	}
-	rows, err := r.db.Query(`SELECT id, name, node_id, token, max_bandwidth, expiry_time, port_range_start, port_range_end, current_flow, is_active, created_time, updated_time FROM peer_share ORDER BY id DESC`)
+	rows, err := r.db.Query(`SELECT id, name, node_id, token, max_bandwidth, expiry_time, port_range_start, port_range_end, current_flow, is_active, created_time, updated_time, allowed_domains FROM peer_share ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -1339,7 +1353,7 @@ func (r *Repository) ListPeerShares() ([]PeerShare, error) {
 	var shares []PeerShare
 	for rows.Next() {
 		var s PeerShare
-		if err := rows.Scan(&s.ID, &s.Name, &s.NodeID, &s.Token, &s.MaxBandwidth, &s.ExpiryTime, &s.PortRangeStart, &s.PortRangeEnd, &s.CurrentFlow, &s.IsActive, &s.CreatedTime, &s.UpdatedTime); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.NodeID, &s.Token, &s.MaxBandwidth, &s.ExpiryTime, &s.PortRangeStart, &s.PortRangeEnd, &s.CurrentFlow, &s.IsActive, &s.CreatedTime, &s.UpdatedTime, &s.AllowedDomains); err != nil {
 			return nil, err
 		}
 		shares = append(shares, s)

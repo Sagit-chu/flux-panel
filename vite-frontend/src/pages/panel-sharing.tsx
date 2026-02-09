@@ -34,6 +34,7 @@ interface PeerShare {
   portRangeStart: number;
   portRangeEnd: number;
   isActive: number;
+  allowedDomains?: string;
 }
 
 export default function PanelSharingPage() {
@@ -54,6 +55,7 @@ export default function PanelSharingPage() {
     expiryDays: 30,
     portRangeStart: 10000,
     portRangeEnd: 20000,
+    allowedDomains: "",
   });
 
   const [importForm, setImportForm] = useState({
@@ -108,6 +110,7 @@ export default function PanelSharingPage() {
         expiryTime: shareForm.expiryDays === 0 ? 0 : expiryTime,
         portRangeStart: shareForm.portRangeStart,
         portRangeEnd: shareForm.portRangeEnd,
+        allowedDomains: shareForm.allowedDomains,
       });
       if (res.code === 0) {
         toast.success("创建成功");
@@ -202,6 +205,7 @@ export default function PanelSharingPage() {
                       </CardHeader>
                       <CardBody className="text-sm space-y-2">
                         <p>端口范围: {share.portRangeStart} - {share.portRangeEnd}</p>
+                        {share.allowedDomains && <p>允许域名: {share.allowedDomains}</p>}
                         <p>过期时间: {share.expiryTime === 0 ? "永久" : new Date(share.expiryTime).toLocaleDateString()}</p>
                         <div className="flex gap-2">
                           <Input readOnly size="sm" value={share.token} />
@@ -275,6 +279,13 @@ export default function PanelSharingPage() {
               description="0 表示永久"
               value={shareForm.expiryDays.toString()}
               onChange={(e) => setShareForm({ ...shareForm, expiryDays: parseInt(e.target.value) })}
+            />
+            <Input
+              label="允许的域名 (可选)"
+              placeholder="example.com, panel.test.com"
+              description="限制使用此Token的来源面板域名，多个域名用逗号分隔，留空不限制"
+              value={shareForm.allowedDomains}
+              onChange={(e) => setShareForm({ ...shareForm, allowedDomains: e.target.value })}
             />
           </ModalBody>
           <ModalFooter>
