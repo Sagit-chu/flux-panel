@@ -57,6 +57,13 @@ const CONFIG_ITEMS: ConfigItem[] = [
     type: "input",
   },
   {
+    key: "panel_domain",
+    label: "面板域名",
+    placeholder: "请输入面板域名",
+    description: "当前面板的域名，用于与其他面板进行联邦共享时验证身份",
+    type: "input",
+  },
+  {
     key: "app_name",
     label: "应用名称",
     placeholder: "请输入应用名称",
@@ -99,6 +106,7 @@ const getInitialConfigs = (): Record<string, string> => {
     "cloudflare_site_key",
     "cloudflare_secret_key",
     "ip",
+    "panel_domain",
   ];
   const initialConfigs: Record<string, string> = {};
 
