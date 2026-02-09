@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1195,19 +1194,10 @@ func bootstrapSchema(db *sql.DB) error {
 		return errors.New("nil db")
 	}
 
-	var exists int
-	err := db.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='user'`).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("check schema: %w", err)
-	}
-	if exists > 0 {
-		return nil
-	}
-
-	log.Printf("sqlite schema not found, bootstrapping embedded schema")
 	if _, err := db.Exec(embeddedSchema); err != nil {
 		return fmt.Errorf("apply schema.sql: %w", err)
 	}
+
 	if _, err := db.Exec(embeddedSeedData); err != nil {
 		return fmt.Errorf("apply data.sql: %w", err)
 	}
