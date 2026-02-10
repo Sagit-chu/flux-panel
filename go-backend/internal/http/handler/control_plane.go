@@ -51,6 +51,10 @@ type nodeRecord struct {
 	TCPListenAddr string
 	UDPListenAddr string
 	InterfaceName string
+	IsRemote      int
+	RemoteURL     string
+	RemoteToken   string
+	RemoteConfig  string
 }
 
 type chainNodeRecord struct {
@@ -197,7 +201,7 @@ func (h *Handler) listForwardPorts(forwardID int64) ([]forwardPortRecord, error)
 
 func (h *Handler) getNodeRecord(nodeID int64) (*nodeRecord, error) {
 	row := h.repo.DB().QueryRow(`
-		SELECT id, name, server_ip, server_ip_v4, server_ip_v6, status, port, tcp_listen_addr, udp_listen_addr, interface_name
+		SELECT id, name, server_ip, server_ip_v4, server_ip_v6, status, port, tcp_listen_addr, udp_listen_addr, interface_name, is_remote, remote_url, remote_token, remote_config
 		FROM node
 		WHERE id = ?
 		LIMIT 1
@@ -209,7 +213,10 @@ func (h *Handler) getNodeRecord(nodeID int64) (*nodeRecord, error) {
 	var tcpListen sql.NullString
 	var udpListen sql.NullString
 	var iface sql.NullString
-	err := row.Scan(&n.ID, &n.Name, &n.ServerIP, &serverIPv4, &serverIPv6, &n.Status, &portRange, &tcpListen, &udpListen, &iface)
+	var remoteURL sql.NullString
+	var remoteToken sql.NullString
+	var remoteConfig sql.NullString
+	err := row.Scan(&n.ID, &n.Name, &n.ServerIP, &serverIPv4, &serverIPv6, &n.Status, &portRange, &tcpListen, &udpListen, &iface, &n.IsRemote, &remoteURL, &remoteToken, &remoteConfig)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("节点不存在")
@@ -222,6 +229,9 @@ func (h *Handler) getNodeRecord(nodeID int64) (*nodeRecord, error) {
 	n.TCPListenAddr = strings.TrimSpace(tcpListen.String)
 	n.UDPListenAddr = strings.TrimSpace(udpListen.String)
 	n.InterfaceName = strings.TrimSpace(iface.String)
+	n.RemoteURL = strings.TrimSpace(remoteURL.String)
+	n.RemoteToken = strings.TrimSpace(remoteToken.String)
+	n.RemoteConfig = strings.TrimSpace(remoteConfig.String)
 	if n.TCPListenAddr == "" {
 		n.TCPListenAddr = "[::]"
 	}

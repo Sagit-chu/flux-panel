@@ -27,6 +27,9 @@ type Handler struct {
 	jwtSecret string
 	wsServer  *ws.Server
 
+	captchaMu     sync.Mutex
+	captchaTokens map[string]int64
+
 	jobsMu      sync.Mutex
 	jobsCancel  context.CancelFunc
 	jobsStarted bool
@@ -37,6 +40,11 @@ type loginRequest struct {
 	Username  string `json:"username"`
 	Password  string `json:"password"`
 	CaptchaID string `json:"captchaId"`
+}
+
+type captchaVerifyRequest struct {
+	ID   string `json:"id"`
+	Data string `json:"data"`
 }
 
 type nameRequest struct {
@@ -63,9 +71,10 @@ type flowItem struct {
 
 func New(repo *sqlite.Repository, jwtSecret string) *Handler {
 	return &Handler{
-		repo:      repo,
-		jwtSecret: jwtSecret,
-		wsServer:  ws.NewServer(repo, jwtSecret),
+		repo:          repo,
+		jwtSecret:     jwtSecret,
+		wsServer:      ws.NewServer(repo, jwtSecret),
+		captchaTokens: make(map[string]int64),
 	}
 }
 
@@ -85,6 +94,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/config/update", h.updateConfigs)
 	mux.HandleFunc("/api/v1/config/update-single", h.updateSingleConfig)
 	mux.HandleFunc("/api/v1/captcha/check", h.checkCaptcha)
+	mux.HandleFunc("/api/v1/captcha/verify", h.captchaVerify)
 	mux.HandleFunc("/api/v1/user/package", h.userPackage)
 	mux.HandleFunc("/api/v1/user/updatePassword", h.updatePassword)
 	mux.HandleFunc("/api/v1/node/list", h.nodeList)
@@ -148,6 +158,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/federation/share/delete", h.federationShareDelete)
 	mux.HandleFunc("/api/v1/federation/connect", h.authPeer(h.federationConnect))
 	mux.HandleFunc("/api/v1/federation/tunnel/create", h.authPeer(h.federationTunnelCreate))
+	mux.HandleFunc("/api/v1/federation/runtime/reserve-port", h.authPeer(h.federationRuntimeReservePort))
+	mux.HandleFunc("/api/v1/federation/runtime/apply-role", h.authPeer(h.federationRuntimeApplyRole))
+	mux.HandleFunc("/api/v1/federation/runtime/release-role", h.authPeer(h.federationRuntimeReleaseRole))
 	mux.HandleFunc("/api/v1/federation/node/import", h.nodeImport)
 
 	mux.HandleFunc("/flow/test", h.flowTest)
@@ -183,20 +196,23 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if captchaEnabled {
-		if strings.TrimSpace(req.CaptchaID) == "" {
+		captchaID := strings.TrimSpace(req.CaptchaID)
+		if captchaID == "" {
 			response.WriteJSON(w, response.ErrDefault("验证码校验失败"))
 			return
 		}
 
-		secretCfg, err := h.repo.GetConfigByName("cloudflare_secret_key")
-		if err != nil || secretCfg == nil || secretCfg.Value == "" {
-			response.WriteJSON(w, response.ErrDefault("验证码配置错误：未配置Secret Key"))
-			return
-		}
+		if !h.consumeCaptchaToken(captchaID) {
+			secretCfg, err := h.repo.GetConfigByName("cloudflare_secret_key")
+			if err != nil || secretCfg == nil || strings.TrimSpace(secretCfg.Value) == "" {
+				response.WriteJSON(w, response.ErrDefault("验证码校验失败"))
+				return
+			}
 
-		if !h.verifyCloudflareTurnstile(req.CaptchaID, secretCfg.Value) {
-			response.WriteJSON(w, response.ErrDefault("验证码校验失败"))
-			return
+			if !h.verifyCloudflareTurnstile(captchaID, strings.TrimSpace(secretCfg.Value)) {
+				response.WriteJSON(w, response.ErrDefault("验证码校验失败"))
+				return
+			}
 		}
 	}
 
@@ -585,6 +601,40 @@ func (h *Handler) checkCaptcha(w http.ResponseWriter, r *http.Request) {
 	response.WriteJSON(w, response.OK(0))
 }
 
+func (h *Handler) captchaVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.WriteJSON(w, response.ErrDefault("请求失败"))
+		return
+	}
+
+	var req captchaVerifyRequest
+	if err := decodeJSON(r.Body, &req); err != nil {
+		h.writeCaptchaVerifyResult(w, false, "")
+		return
+	}
+	id := strings.TrimSpace(req.ID)
+	data := strings.TrimSpace(req.Data)
+	if id == "" || data == "" {
+		h.writeCaptchaVerifyResult(w, false, "")
+		return
+	}
+
+	verified := false
+	secretCfg, err := h.repo.GetConfigByName("cloudflare_secret_key")
+	if err == nil && secretCfg != nil && strings.TrimSpace(secretCfg.Value) != "" {
+		verified = h.verifyCloudflareTurnstile(data, strings.TrimSpace(secretCfg.Value))
+	} else {
+		verified = data == "ok"
+	}
+	if !verified {
+		h.writeCaptchaVerifyResult(w, false, "")
+		return
+	}
+
+	h.markCaptchaToken(id)
+	h.writeCaptchaVerifyResult(w, true, id)
+}
+
 func (h *Handler) flowTest(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = w.Write([]byte("test"))
@@ -897,6 +947,69 @@ func (h *Handler) captchaEnabled() (bool, error) {
 		return false, nil
 	}
 	return strings.EqualFold(cfg.Value, "true"), nil
+}
+
+func (h *Handler) markCaptchaToken(token string) {
+	if h == nil {
+		return
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return
+	}
+	now := time.Now().UnixMilli()
+	exp := now + int64(5*time.Minute/time.Millisecond)
+
+	h.captchaMu.Lock()
+	defer h.captchaMu.Unlock()
+	if h.captchaTokens == nil {
+		h.captchaTokens = make(map[string]int64)
+	}
+	for k, v := range h.captchaTokens {
+		if v <= now {
+			delete(h.captchaTokens, k)
+		}
+	}
+	h.captchaTokens[token] = exp
+}
+
+func (h *Handler) consumeCaptchaToken(token string) bool {
+	if h == nil {
+		return false
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return false
+	}
+	now := time.Now().UnixMilli()
+
+	h.captchaMu.Lock()
+	defer h.captchaMu.Unlock()
+	if h.captchaTokens == nil {
+		return false
+	}
+	for k, v := range h.captchaTokens {
+		if v <= now {
+			delete(h.captchaTokens, k)
+		}
+	}
+	exp, ok := h.captchaTokens[token]
+	if !ok {
+		return false
+	}
+	delete(h.captchaTokens, token)
+	return exp > now
+}
+
+func (h *Handler) writeCaptchaVerifyResult(w http.ResponseWriter, success bool, token string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	payload := map[string]interface{}{
+		"success": success,
+		"data": map[string]interface{}{
+			"validToken": token,
+		},
+	}
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func decodeJSON(body io.ReadCloser, out interface{}) error {

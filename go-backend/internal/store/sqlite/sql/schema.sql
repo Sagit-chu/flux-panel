@@ -202,3 +202,43 @@ CREATE TABLE IF NOT EXISTS peer_share (
     allowed_domains TEXT DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS peer_share_runtime (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    share_id INTEGER NOT NULL,
+    node_id INTEGER NOT NULL,
+    reservation_id TEXT NOT NULL UNIQUE,
+    resource_key TEXT NOT NULL UNIQUE,
+    binding_id TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    chain_name TEXT NOT NULL DEFAULT '',
+    service_name TEXT NOT NULL DEFAULT '',
+    protocol TEXT NOT NULL DEFAULT 'tls',
+    strategy TEXT NOT NULL DEFAULT 'round',
+    port INTEGER NOT NULL DEFAULT 0,
+    target TEXT NOT NULL DEFAULT '',
+    applied INTEGER NOT NULL DEFAULT 0,
+    status INTEGER NOT NULL DEFAULT 1,
+    created_time INTEGER NOT NULL,
+    updated_time INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_peer_share_runtime_share_node_status ON peer_share_runtime(share_id, node_id, status);
+CREATE INDEX IF NOT EXISTS idx_peer_share_runtime_binding_id ON peer_share_runtime(binding_id);
+
+CREATE TABLE IF NOT EXISTS federation_tunnel_binding (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tunnel_id INTEGER NOT NULL,
+    node_id INTEGER NOT NULL,
+    chain_type INTEGER NOT NULL,
+    hop_inx INTEGER NOT NULL DEFAULT 0,
+    remote_url TEXT NOT NULL,
+    resource_key TEXT NOT NULL UNIQUE,
+    remote_binding_id TEXT NOT NULL,
+    allocated_port INTEGER NOT NULL,
+    status INTEGER NOT NULL DEFAULT 1,
+    created_time INTEGER NOT NULL,
+    updated_time INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_federation_tunnel_binding_unique ON federation_tunnel_binding(tunnel_id, node_id, chain_type, hop_inx);
+CREATE INDEX IF NOT EXISTS idx_federation_tunnel_binding_tunnel ON federation_tunnel_binding(tunnel_id, status);

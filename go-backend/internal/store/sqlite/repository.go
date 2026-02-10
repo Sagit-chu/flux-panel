@@ -124,6 +124,41 @@ type PeerShare struct {
 	AllowedDomains string `json:"allowedDomains"`
 }
 
+type PeerShareRuntime struct {
+	ID            int64
+	ShareID       int64
+	NodeID        int64
+	ReservationID string
+	ResourceKey   string
+	BindingID     string
+	Role          string
+	ChainName     string
+	ServiceName   string
+	Protocol      string
+	Strategy      string
+	Port          int
+	Target        string
+	Applied       int
+	Status        int
+	CreatedTime   int64
+	UpdatedTime   int64
+}
+
+type FederationTunnelBinding struct {
+	ID              int64
+	TunnelID        int64
+	NodeID          int64
+	ChainType       int
+	HopInx          int
+	RemoteURL       string
+	ResourceKey     string
+	RemoteBindingID string
+	AllocatedPort   int
+	Status          int
+	CreatedTime     int64
+	UpdatedTime     int64
+}
+
 func Open(path string) (*Repository, error) {
 	if err := ensureParentDir(path); err != nil {
 		return nil, err
@@ -1340,6 +1375,186 @@ func (r *Repository) ListPeerShares() ([]PeerShare, error) {
 		shares = append(shares, s)
 	}
 	return shares, nil
+}
+
+func (r *Repository) GetPeerShareRuntimeByResourceKey(shareID int64, resourceKey string) (*PeerShareRuntime, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	row := r.db.QueryRow(`
+		SELECT id, share_id, node_id, reservation_id, resource_key, binding_id, role, chain_name, service_name, protocol, strategy, port, target, applied, status, created_time, updated_time
+		FROM peer_share_runtime
+		WHERE share_id = ? AND resource_key = ?
+		LIMIT 1
+	`, shareID, resourceKey)
+	var item PeerShareRuntime
+	if err := row.Scan(&item.ID, &item.ShareID, &item.NodeID, &item.ReservationID, &item.ResourceKey, &item.BindingID, &item.Role, &item.ChainName, &item.ServiceName, &item.Protocol, &item.Strategy, &item.Port, &item.Target, &item.Applied, &item.Status, &item.CreatedTime, &item.UpdatedTime); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (r *Repository) GetPeerShareRuntimeByReservationID(shareID int64, reservationID string) (*PeerShareRuntime, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	row := r.db.QueryRow(`
+		SELECT id, share_id, node_id, reservation_id, resource_key, binding_id, role, chain_name, service_name, protocol, strategy, port, target, applied, status, created_time, updated_time
+		FROM peer_share_runtime
+		WHERE share_id = ? AND reservation_id = ?
+		LIMIT 1
+	`, shareID, reservationID)
+	var item PeerShareRuntime
+	if err := row.Scan(&item.ID, &item.ShareID, &item.NodeID, &item.ReservationID, &item.ResourceKey, &item.BindingID, &item.Role, &item.ChainName, &item.ServiceName, &item.Protocol, &item.Strategy, &item.Port, &item.Target, &item.Applied, &item.Status, &item.CreatedTime, &item.UpdatedTime); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (r *Repository) GetPeerShareRuntimeByBindingID(shareID int64, bindingID string) (*PeerShareRuntime, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	row := r.db.QueryRow(`
+		SELECT id, share_id, node_id, reservation_id, resource_key, binding_id, role, chain_name, service_name, protocol, strategy, port, target, applied, status, created_time, updated_time
+		FROM peer_share_runtime
+		WHERE share_id = ? AND binding_id = ?
+		LIMIT 1
+	`, shareID, bindingID)
+	var item PeerShareRuntime
+	if err := row.Scan(&item.ID, &item.ShareID, &item.NodeID, &item.ReservationID, &item.ResourceKey, &item.BindingID, &item.Role, &item.ChainName, &item.ServiceName, &item.Protocol, &item.Strategy, &item.Port, &item.Target, &item.Applied, &item.Status, &item.CreatedTime, &item.UpdatedTime); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (r *Repository) CreatePeerShareRuntime(item *PeerShareRuntime) error {
+	if r == nil || r.db == nil {
+		return errors.New("repository not initialized")
+	}
+	if item == nil {
+		return errors.New("runtime item is nil")
+	}
+	_, err := r.db.Exec(`
+		INSERT INTO peer_share_runtime(share_id, node_id, reservation_id, resource_key, binding_id, role, chain_name, service_name, protocol, strategy, port, target, applied, status, created_time, updated_time)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, item.ShareID, item.NodeID, item.ReservationID, item.ResourceKey, item.BindingID, item.Role, item.ChainName, item.ServiceName, item.Protocol, item.Strategy, item.Port, item.Target, item.Applied, item.Status, item.CreatedTime, item.UpdatedTime)
+	return err
+}
+
+func (r *Repository) UpdatePeerShareRuntime(item *PeerShareRuntime) error {
+	if r == nil || r.db == nil {
+		return errors.New("repository not initialized")
+	}
+	if item == nil {
+		return errors.New("runtime item is nil")
+	}
+	_, err := r.db.Exec(`
+		UPDATE peer_share_runtime
+		SET binding_id = ?, role = ?, chain_name = ?, service_name = ?, protocol = ?, strategy = ?, port = ?, target = ?, applied = ?, status = ?, updated_time = ?
+		WHERE id = ?
+	`, item.BindingID, item.Role, item.ChainName, item.ServiceName, item.Protocol, item.Strategy, item.Port, item.Target, item.Applied, item.Status, item.UpdatedTime, item.ID)
+	return err
+}
+
+func (r *Repository) MarkPeerShareRuntimeReleased(id int64, updatedTime int64) error {
+	if r == nil || r.db == nil {
+		return errors.New("repository not initialized")
+	}
+	_, err := r.db.Exec(`UPDATE peer_share_runtime SET status = 0, updated_time = ? WHERE id = ?`, updatedTime, id)
+	return err
+}
+
+func (r *Repository) ListActivePeerShareRuntimePorts(shareID int64, nodeID int64) ([]int, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	rows, err := r.db.Query(`SELECT port FROM peer_share_runtime WHERE share_id = ? AND node_id = ? AND status = 1 AND port > 0`, shareID, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]int, 0)
+	for rows.Next() {
+		var port int
+		if err := rows.Scan(&port); err != nil {
+			return nil, err
+		}
+		if port > 0 {
+			out = append(out, port)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *Repository) UpsertFederationTunnelBinding(item *FederationTunnelBinding) error {
+	if r == nil || r.db == nil {
+		return errors.New("repository not initialized")
+	}
+	if item == nil {
+		return errors.New("binding item is nil")
+	}
+	_, err := r.db.Exec(`
+		INSERT INTO federation_tunnel_binding(tunnel_id, node_id, chain_type, hop_inx, remote_url, resource_key, remote_binding_id, allocated_port, status, created_time, updated_time)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(tunnel_id, node_id, chain_type, hop_inx)
+		DO UPDATE SET
+			remote_url = excluded.remote_url,
+			resource_key = excluded.resource_key,
+			remote_binding_id = excluded.remote_binding_id,
+			allocated_port = excluded.allocated_port,
+			status = excluded.status,
+			updated_time = excluded.updated_time
+	`, item.TunnelID, item.NodeID, item.ChainType, item.HopInx, item.RemoteURL, item.ResourceKey, item.RemoteBindingID, item.AllocatedPort, item.Status, item.CreatedTime, item.UpdatedTime)
+	return err
+}
+
+func (r *Repository) ListActiveFederationTunnelBindingsByTunnel(tunnelID int64) ([]FederationTunnelBinding, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	rows, err := r.db.Query(`
+		SELECT id, tunnel_id, node_id, chain_type, hop_inx, remote_url, resource_key, remote_binding_id, allocated_port, status, created_time, updated_time
+		FROM federation_tunnel_binding
+		WHERE tunnel_id = ? AND status = 1
+		ORDER BY chain_type ASC, hop_inx ASC, id ASC
+	`, tunnelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]FederationTunnelBinding, 0)
+	for rows.Next() {
+		var item FederationTunnelBinding
+		if err := rows.Scan(&item.ID, &item.TunnelID, &item.NodeID, &item.ChainType, &item.HopInx, &item.RemoteURL, &item.ResourceKey, &item.RemoteBindingID, &item.AllocatedPort, &item.Status, &item.CreatedTime, &item.UpdatedTime); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *Repository) DeleteFederationTunnelBindingsByTunnel(tunnelID int64) error {
+	if r == nil || r.db == nil {
+		return errors.New("repository not initialized")
+	}
+	_, err := r.db.Exec(`DELETE FROM federation_tunnel_binding WHERE tunnel_id = ?`, tunnelID)
+	return err
 }
 
 var osMkdirAll = func(path string) error {

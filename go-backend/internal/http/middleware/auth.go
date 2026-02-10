@@ -85,6 +85,12 @@ func shouldSkip(path string) bool {
 		return true
 	case path == "/api/v1/federation/tunnel/create":
 		return true
+	case path == "/api/v1/federation/runtime/reserve-port":
+		return true
+	case path == "/api/v1/federation/runtime/apply-role":
+		return true
+	case path == "/api/v1/federation/runtime/release-role":
+		return true
 	default:
 		return false
 	}

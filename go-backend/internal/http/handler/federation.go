@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -35,6 +36,33 @@ type deletePeerShareRequest struct {
 type nodeImportRequest struct {
 	RemoteURL string `json:"remoteUrl"`
 	Token     string `json:"token"`
+}
+
+type federationRuntimeReservePortRequest struct {
+	ResourceKey   string `json:"resourceKey"`
+	Protocol      string `json:"protocol"`
+	RequestedPort int    `json:"requestedPort"`
+}
+
+type federationRuntimeTarget struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Protocol string `json:"protocol"`
+}
+
+type federationRuntimeApplyRoleRequest struct {
+	ReservationID string                    `json:"reservationId"`
+	ResourceKey   string                    `json:"resourceKey"`
+	Role          string                    `json:"role"`
+	Protocol      string                    `json:"protocol"`
+	Strategy      string                    `json:"strategy"`
+	Targets       []federationRuntimeTarget `json:"targets"`
+}
+
+type federationRuntimeReleaseRoleRequest struct {
+	BindingID     string `json:"bindingId"`
+	ReservationID string `json:"reservationId"`
+	ResourceKey   string `json:"resourceKey"`
 }
 
 func (h *Handler) federationShareList(w http.ResponseWriter, r *http.Request) {
@@ -183,6 +211,11 @@ func (h *Handler) nodeImport(w http.ResponseWriter, r *http.Request) {
 	}
 	configBytes, _ := json.Marshal(configData)
 
+	portRange := "0"
+	if info.PortRangeStart > 0 && info.PortRangeEnd >= info.PortRangeStart {
+		portRange = fmt.Sprintf("%d-%d", info.PortRangeStart, info.PortRangeEnd)
+	}
+
 	db := h.repo.DB()
 	inx := nextIndex(db, "node")
 	now := time.Now().UnixMilli()
@@ -195,7 +228,7 @@ func (h *Handler) nodeImport(w http.ResponseWriter, r *http.Request) {
 		randomToken(16), // Dummy secret
 		info.ServerIP,
 		"", "", // v4/v6 unknown, use server_ip
-		"0", // port range not applicable for remote
+		portRange,
 		"",
 		"",
 		now, now,
@@ -384,6 +417,382 @@ func (h *Handler) federationTunnelCreate(w http.ResponseWriter, r *http.Request)
 	response.WriteJSON(w, response.OK(map[string]interface{}{
 		"tunnelId": tunnelID,
 	}))
+}
+
+func (h *Handler) federationRuntimeReservePort(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.WriteJSON(w, response.ErrDefault("Invalid method"))
+		return
+	}
+
+	token := extractBearerToken(r)
+	share, err := h.repo.GetPeerShareByToken(token)
+	if err != nil || share == nil {
+		response.WriteJSON(w, response.Err(401, "Unauthorized"))
+		return
+	}
+
+	var req federationRuntimeReservePortRequest
+	if err := decodeJSON(r.Body, &req); err != nil {
+		response.WriteJSON(w, response.ErrDefault("Invalid JSON"))
+		return
+	}
+	req.ResourceKey = strings.TrimSpace(req.ResourceKey)
+	if req.ResourceKey == "" {
+		response.WriteJSON(w, response.ErrDefault("resourceKey is required"))
+		return
+	}
+
+	existing, err := h.repo.GetPeerShareRuntimeByResourceKey(share.ID, req.ResourceKey)
+	if err != nil {
+		response.WriteJSON(w, response.Err(-2, err.Error()))
+		return
+	}
+	if existing != nil && existing.Status == 1 {
+		response.WriteJSON(w, response.OK(map[string]interface{}{
+			"reservationId": existing.ReservationID,
+			"allocatedPort": existing.Port,
+			"bindingId":     existing.BindingID,
+		}))
+		return
+	}
+
+	allocatedPort, err := h.pickPeerSharePort(share, req.RequestedPort)
+	if err != nil {
+		response.WriteJSON(w, response.ErrDefault(err.Error()))
+		return
+	}
+
+	now := time.Now().UnixMilli()
+	if existing != nil {
+		existing.Protocol = defaultString(req.Protocol, "tls")
+		existing.Port = allocatedPort
+		existing.BindingID = ""
+		existing.Role = ""
+		existing.ChainName = ""
+		existing.ServiceName = ""
+		existing.Strategy = "round"
+		existing.Target = ""
+		existing.Applied = 0
+		existing.Status = 1
+		existing.UpdatedTime = now
+		if err := h.repo.UpdatePeerShareRuntime(existing); err != nil {
+			response.WriteJSON(w, response.Err(-2, err.Error()))
+			return
+		}
+		response.WriteJSON(w, response.OK(map[string]interface{}{
+			"reservationId": existing.ReservationID,
+			"allocatedPort": existing.Port,
+			"bindingId":     existing.BindingID,
+		}))
+		return
+	}
+
+	runtime := &sqlite.PeerShareRuntime{
+		ShareID:       share.ID,
+		NodeID:        share.NodeID,
+		ReservationID: randomToken(24),
+		ResourceKey:   req.ResourceKey,
+		BindingID:     "",
+		Role:          "",
+		ChainName:     "",
+		ServiceName:   "",
+		Protocol:      defaultString(req.Protocol, "tls"),
+		Strategy:      "round",
+		Port:          allocatedPort,
+		Target:        "",
+		Applied:       0,
+		Status:        1,
+		CreatedTime:   now,
+		UpdatedTime:   now,
+	}
+	if err := h.repo.CreatePeerShareRuntime(runtime); err != nil {
+		response.WriteJSON(w, response.Err(-2, err.Error()))
+		return
+	}
+
+	response.WriteJSON(w, response.OK(map[string]interface{}{
+		"reservationId": runtime.ReservationID,
+		"allocatedPort": runtime.Port,
+		"bindingId":     runtime.BindingID,
+	}))
+}
+
+func (h *Handler) federationRuntimeApplyRole(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.WriteJSON(w, response.ErrDefault("Invalid method"))
+		return
+	}
+
+	token := extractBearerToken(r)
+	share, err := h.repo.GetPeerShareByToken(token)
+	if err != nil || share == nil {
+		response.WriteJSON(w, response.Err(401, "Unauthorized"))
+		return
+	}
+
+	var req federationRuntimeApplyRoleRequest
+	if err := decodeJSON(r.Body, &req); err != nil {
+		response.WriteJSON(w, response.ErrDefault("Invalid JSON"))
+		return
+	}
+	req.Role = strings.ToLower(strings.TrimSpace(req.Role))
+	if req.Role != "middle" && req.Role != "exit" {
+		response.WriteJSON(w, response.ErrDefault("Invalid role"))
+		return
+	}
+
+	var runtime *sqlite.PeerShareRuntime
+	if strings.TrimSpace(req.ReservationID) != "" {
+		runtime, err = h.repo.GetPeerShareRuntimeByReservationID(share.ID, strings.TrimSpace(req.ReservationID))
+	} else {
+		runtime, err = h.repo.GetPeerShareRuntimeByResourceKey(share.ID, strings.TrimSpace(req.ResourceKey))
+	}
+	if err != nil {
+		response.WriteJSON(w, response.Err(-2, err.Error()))
+		return
+	}
+	if runtime == nil || runtime.Status == 0 {
+		response.WriteJSON(w, response.ErrDefault("Reservation not found"))
+		return
+	}
+
+	if runtime.Applied == 1 && strings.TrimSpace(runtime.BindingID) != "" {
+		response.WriteJSON(w, response.OK(map[string]interface{}{
+			"bindingId":     runtime.BindingID,
+			"allocatedPort": runtime.Port,
+			"reservationId": runtime.ReservationID,
+		}))
+		return
+	}
+
+	node, err := h.getNodeRecord(share.NodeID)
+	if err != nil {
+		response.WriteJSON(w, response.ErrDefault(err.Error()))
+		return
+	}
+
+	protocol := defaultString(req.Protocol, runtime.Protocol)
+	strategy := defaultString(req.Strategy, "round")
+	chainName := fmt.Sprintf("fed_chain_%d", runtime.ID)
+	serviceName := fmt.Sprintf("fed_svc_%d", runtime.ID)
+
+	if req.Role == "middle" {
+		if len(req.Targets) == 0 {
+			response.WriteJSON(w, response.ErrDefault("targets are required for middle role"))
+			return
+		}
+		nodeItems := make([]map[string]interface{}, 0, len(req.Targets))
+		for i, target := range req.Targets {
+			host := strings.TrimSpace(target.Host)
+			if host == "" || target.Port <= 0 {
+				response.WriteJSON(w, response.ErrDefault("Invalid target"))
+				return
+			}
+			nodeItems = append(nodeItems, map[string]interface{}{
+				"name": fmt.Sprintf("node_%d", i+1),
+				"addr": processServerAddress(fmt.Sprintf("%s:%d", host, target.Port)),
+				"connector": map[string]interface{}{
+					"type": "relay",
+				},
+				"dialer": map[string]interface{}{
+					"type": defaultString(target.Protocol, protocol),
+				},
+			})
+		}
+
+		chainData := map[string]interface{}{
+			"name": chainName,
+			"hops": []map[string]interface{}{
+				{
+					"name": fmt.Sprintf("hop_%d", runtime.ID),
+					"selector": map[string]interface{}{
+						"strategy":    strategy,
+						"maxFails":    1,
+						"failTimeout": int64(600000000000),
+					},
+					"nodes": nodeItems,
+				},
+			},
+		}
+		if strings.TrimSpace(node.InterfaceName) != "" {
+			hops := chainData["hops"].([]map[string]interface{})
+			hops[0]["interface"] = node.InterfaceName
+		}
+		if _, err := h.sendNodeCommand(share.NodeID, "AddChains", chainData, true, false); err != nil {
+			response.WriteJSON(w, response.ErrDefault(err.Error()))
+			return
+		}
+	}
+
+	service := map[string]interface{}{
+		"name": serviceName,
+		"addr": fmt.Sprintf("%s:%d", node.TCPListenAddr, runtime.Port),
+		"handler": map[string]interface{}{
+			"type": "relay",
+		},
+		"listener": map[string]interface{}{
+			"type": protocol,
+		},
+	}
+	if req.Role == "middle" {
+		service["handler"].(map[string]interface{})["chain"] = chainName
+	}
+	if req.Role == "exit" && strings.TrimSpace(node.InterfaceName) != "" {
+		service["metadata"] = map[string]interface{}{"interface": node.InterfaceName}
+	}
+	if _, err := h.sendNodeCommand(share.NodeID, "AddService", []map[string]interface{}{service}, true, false); err != nil {
+		if req.Role == "middle" {
+			_, _ = h.sendNodeCommand(share.NodeID, "DeleteChains", map[string]interface{}{"chain": chainName}, false, true)
+		}
+		response.WriteJSON(w, response.ErrDefault(err.Error()))
+		return
+	}
+
+	targetBytes, _ := json.Marshal(req.Targets)
+	runtime.BindingID = fmt.Sprintf("%d", runtime.ID)
+	runtime.Role = req.Role
+	runtime.ChainName = ""
+	if req.Role == "middle" {
+		runtime.ChainName = chainName
+	}
+	runtime.ServiceName = serviceName
+	runtime.Protocol = protocol
+	runtime.Strategy = strategy
+	runtime.Target = string(targetBytes)
+	runtime.Applied = 1
+	runtime.Status = 1
+	runtime.UpdatedTime = time.Now().UnixMilli()
+	if err := h.repo.UpdatePeerShareRuntime(runtime); err != nil {
+		response.WriteJSON(w, response.Err(-2, err.Error()))
+		return
+	}
+
+	response.WriteJSON(w, response.OK(map[string]interface{}{
+		"bindingId":     runtime.BindingID,
+		"reservationId": runtime.ReservationID,
+		"allocatedPort": runtime.Port,
+	}))
+}
+
+func (h *Handler) federationRuntimeReleaseRole(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.WriteJSON(w, response.ErrDefault("Invalid method"))
+		return
+	}
+
+	token := extractBearerToken(r)
+	share, err := h.repo.GetPeerShareByToken(token)
+	if err != nil || share == nil {
+		response.WriteJSON(w, response.Err(401, "Unauthorized"))
+		return
+	}
+
+	var req federationRuntimeReleaseRoleRequest
+	if err := decodeJSON(r.Body, &req); err != nil {
+		response.WriteJSON(w, response.ErrDefault("Invalid JSON"))
+		return
+	}
+
+	var runtime *sqlite.PeerShareRuntime
+	if strings.TrimSpace(req.BindingID) != "" {
+		runtime, err = h.repo.GetPeerShareRuntimeByBindingID(share.ID, strings.TrimSpace(req.BindingID))
+	} else if strings.TrimSpace(req.ReservationID) != "" {
+		runtime, err = h.repo.GetPeerShareRuntimeByReservationID(share.ID, strings.TrimSpace(req.ReservationID))
+	} else if strings.TrimSpace(req.ResourceKey) != "" {
+		runtime, err = h.repo.GetPeerShareRuntimeByResourceKey(share.ID, strings.TrimSpace(req.ResourceKey))
+	} else {
+		response.WriteJSON(w, response.ErrDefault("bindingId or reservationId or resourceKey is required"))
+		return
+	}
+	if err != nil {
+		response.WriteJSON(w, response.Err(-2, err.Error()))
+		return
+	}
+	if runtime == nil {
+		response.WriteJSON(w, response.OKEmpty())
+		return
+	}
+
+	if runtime.Applied == 1 {
+		if strings.TrimSpace(runtime.ServiceName) != "" {
+			_, _ = h.sendNodeCommand(share.NodeID, "DeleteService", map[string]interface{}{"services": []string{runtime.ServiceName}}, false, true)
+		}
+		if strings.TrimSpace(runtime.Role) == "middle" && strings.TrimSpace(runtime.ChainName) != "" {
+			_, _ = h.sendNodeCommand(share.NodeID, "DeleteChains", map[string]interface{}{"chain": runtime.ChainName}, false, true)
+		}
+	}
+
+	if err := h.repo.MarkPeerShareRuntimeReleased(runtime.ID, time.Now().UnixMilli()); err != nil {
+		response.WriteJSON(w, response.Err(-2, err.Error()))
+		return
+	}
+
+	response.WriteJSON(w, response.OKEmpty())
+}
+
+func (h *Handler) pickPeerSharePort(share *sqlite.PeerShare, requestedPort int) (int, error) {
+	if share == nil {
+		return 0, fmt.Errorf("share not found")
+	}
+	if share.PortRangeStart <= 0 || share.PortRangeEnd <= 0 || share.PortRangeEnd < share.PortRangeStart {
+		return 0, fmt.Errorf("No available port")
+	}
+
+	used := make(map[int]struct{})
+
+	rows, err := h.repo.DB().Query(`SELECT port FROM chain_tunnel WHERE node_id = ? AND port IS NOT NULL AND port > 0`, share.NodeID)
+	if err != nil {
+		return 0, err
+	}
+	for rows.Next() {
+		var p sql.NullInt64
+		if scanErr := rows.Scan(&p); scanErr == nil && p.Valid && p.Int64 > 0 {
+			used[int(p.Int64)] = struct{}{}
+		}
+	}
+	_ = rows.Close()
+
+	rows, err = h.repo.DB().Query(`SELECT port FROM forward_port WHERE node_id = ? AND port > 0`, share.NodeID)
+	if err != nil {
+		return 0, err
+	}
+	for rows.Next() {
+		var p sql.NullInt64
+		if scanErr := rows.Scan(&p); scanErr == nil && p.Valid && p.Int64 > 0 {
+			used[int(p.Int64)] = struct{}{}
+		}
+	}
+	_ = rows.Close()
+
+	ports, err := h.repo.ListActivePeerShareRuntimePorts(share.ID, share.NodeID)
+	if err != nil {
+		return 0, err
+	}
+	for _, p := range ports {
+		if p > 0 {
+			used[p] = struct{}{}
+		}
+	}
+
+	if requestedPort > 0 {
+		if requestedPort < share.PortRangeStart || requestedPort > share.PortRangeEnd {
+			return 0, fmt.Errorf("Port out of range")
+		}
+		if _, ok := used[requestedPort]; ok {
+			return 0, fmt.Errorf("No available port")
+		}
+		return requestedPort, nil
+	}
+
+	for p := share.PortRangeStart; p <= share.PortRangeEnd; p++ {
+		if _, ok := used[p]; ok {
+			continue
+		}
+		return p, nil
+	}
+
+	return 0, fmt.Errorf("No available port")
 }
 
 func extractBearerToken(r *http.Request) string {
