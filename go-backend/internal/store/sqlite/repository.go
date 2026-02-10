@@ -1335,8 +1335,16 @@ func (r *Repository) DeletePeerShare(id int64) error {
 	if r == nil || r.db == nil {
 		return errors.New("repository not initialized")
 	}
-	_, err := r.db.Exec(`DELETE FROM peer_share WHERE id=?`, id)
-	return err
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, _ = tx.Exec(`DELETE FROM peer_share_runtime WHERE share_id = ?`, id)
+	if _, err := tx.Exec(`DELETE FROM peer_share WHERE id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) GetPeerShare(id int64) (*PeerShare, error) {
