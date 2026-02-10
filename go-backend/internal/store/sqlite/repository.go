@@ -1203,7 +1203,9 @@ func migrateSchema(db *sql.DB) error {
 
 	columnsByTable := map[string]map[string]string{
 		"node": {
-			"inx": "INTEGER NOT NULL DEFAULT 0",
+			"server_ip_v4": "VARCHAR(100)",
+			"server_ip_v6": "VARCHAR(100)",
+			"inx":          "INTEGER NOT NULL DEFAULT 0",
 		},
 		"tunnel": {
 			"inx": "INTEGER NOT NULL DEFAULT 0",
