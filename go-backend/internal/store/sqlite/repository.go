@@ -1262,35 +1262,44 @@ func migrateSchema(db *sql.DB) error {
 		return errors.New("nil db")
 	}
 
-	// Add allowed_domains column if it doesn't exist (for existing tables)
-	var dummy interface{}
-	err := db.QueryRow("SELECT allowed_domains FROM peer_share LIMIT 1").Scan(&dummy)
-	if err != nil {
+	ensureColumn := func(table, col, typ string) {
+		var dummy interface{}
+		err := db.QueryRow(fmt.Sprintf("SELECT %s FROM %s LIMIT 1", col, table)).Scan(&dummy)
+		if err == nil || errors.Is(err, sql.ErrNoRows) {
+			return
+		}
 		if strings.Contains(err.Error(), "no such column") {
-			_, err = db.Exec("ALTER TABLE peer_share ADD COLUMN allowed_domains TEXT DEFAULT ''")
-			if err != nil {
-				log.Printf("failed to add column allowed_domains to peer_share: %v", err)
+			if _, alterErr := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, col, typ)); alterErr != nil {
+				log.Printf("failed to add column %s to %s: %v", col, table, alterErr)
 			}
 		}
 	}
 
-	columns := map[string]string{
-		"is_remote":     "INTEGER DEFAULT 0",
-		"remote_url":    "TEXT",
-		"remote_token":  "TEXT",
-		"remote_config": "TEXT",
+	columnsByTable := map[string]map[string]string{
+		"peer_share": {
+			"allowed_domains": "TEXT DEFAULT ''",
+		},
+		"node": {
+			"inx":           "INTEGER NOT NULL DEFAULT 0",
+			"is_remote":     "INTEGER DEFAULT 0",
+			"remote_url":    "TEXT",
+			"remote_token":  "TEXT",
+			"remote_config": "TEXT",
+		},
+		"tunnel": {
+			"inx": "INTEGER NOT NULL DEFAULT 0",
+		},
+		"forward": {
+			"inx": "INTEGER NOT NULL DEFAULT 0",
+		},
+		"chain_tunnel": {
+			"inx": "INTEGER",
+		},
 	}
 
-	for col, typ := range columns {
-		var dummy interface{}
-		err := db.QueryRow(fmt.Sprintf("SELECT %s FROM node LIMIT 1", col)).Scan(&dummy)
-		if err != nil {
-			if strings.Contains(err.Error(), "no such column") {
-				_, err = db.Exec(fmt.Sprintf("ALTER TABLE node ADD COLUMN %s %s", col, typ))
-				if err != nil {
-					log.Printf("failed to add column %s: %v", col, err)
-				}
-			}
+	for table, columns := range columnsByTable {
+		for col, typ := range columns {
+			ensureColumn(table, col, typ)
 		}
 	}
 	return nil
