@@ -2,35 +2,7 @@
 
 > **联系我们**: [Telegram群组](https://t.me/flvxpanel)
 
-## Original Project
-- **Name**: flux-panel
-- **Source**: https://github.com/bqlpfy/flux-panel
-- **License**: Apache License 2.0
 
-## Modifications
-The following major changes and additions have been made in this fork (FLVX):
-
-### 1. Backend Architecture (Replaced)
-- **Removed**: The original `springboot-backend/` (Java/Spring Boot) has been entirely removed.
-- **Added**: A new `go-backend/` (Go/SQLite) implementation replaces the original backend.
-
-### 2. Forwarding Agent (Modified)
-- **Modified**: `go-gost/` - Modified forwarding agent wrapper.
-- **Modified**: `go-gost/x/` - Modified local fork of the `gost` extensions library.
-
-### 3. Frontend (Modified)
-- **Modified**: `vite-frontend/` - Significant updates to the React/Vite dashboard to compatible with the new Go backend, including UI/UX improvements (HeroUI + Tailwind).
-
-### 4. Mobile Applications (Removed)
-- **Removed**: `android-app/` - Source code for the Android client.
-- **Removed**: `ios-app/` - Source code for the iOS client.
-
-### 5. Infrastructure & Scripts
-- **Modified**: `docker-compose-v4.yml`, `docker-compose-v6.yml` (Updated for Go backend).
-- **Modified**: `install.sh`, `panel_install.sh` (Updated installation logic).
-- **Added**: `AGENTS.md` (Project documentation).
-
----
 ## 特性
 
 - 支持按 **隧道账号级别** 管理流量转发数量，可用于用户/隧道配额控制
@@ -39,6 +11,10 @@ The following major changes and additions have been made in this fork (FLVX):
 - 可针对 **指定用户的指定隧道进行限速** 设置
 - 支持配置 **单向或双向流量计费方式**，灵活适配不同计费模型
 - 提供灵活的转发策略配置，适用于多种网络场景
+- 面板分享，支持将节点分享给其他人，面板对接面板
+- 支持分组权限管理，隧道分组、用户分组
+- 支持批量功能，可以批量下发配置，启停等
+- 支持隧道修改配置、转发修改隧道
 
 
 ## 部署流程
@@ -72,6 +48,37 @@ curl -L https://github.com/Sagit-chu/flux-panel/releases/download/2.1.0/install.
 - **密码**: admin_user
 
 > ⚠️ 首次登录后请立即修改默认密码！
+
+---
+## Original Project
+- **Name**: flux-panel
+- **Source**: https://github.com/bqlpfy/flux-panel
+- **License**: Apache License 2.0
+
+## Modifications
+The following major changes and additions have been made in this fork (FLVX):
+
+### 1. Backend Architecture (Replaced)
+- **Removed**: The original `springboot-backend/` (Java/Spring Boot) has been entirely removed.
+- **Added**: A new `go-backend/` (Go/SQLite) implementation replaces the original backend.
+
+### 2. Forwarding Agent (Modified)
+- **Modified**: `go-gost/` - Modified forwarding agent wrapper.
+- **Modified**: `go-gost/x/` - Modified local fork of the `gost` extensions library.
+
+### 3. Frontend (Modified)
+- **Modified**: `vite-frontend/` - Significant updates to the React/Vite dashboard to compatible with the new Go backend, including UI/UX improvements (HeroUI + Tailwind).
+
+### 4. Mobile Applications (Removed)
+- **Removed**: `android-app/` - Source code for the Android client.
+- **Removed**: `ios-app/` - Source code for the iOS client.
+
+### 5. Infrastructure & Scripts
+- **Modified**: `docker-compose-v4.yml`, `docker-compose-v6.yml` (Updated for Go backend).
+- **Modified**: `install.sh`, `panel_install.sh` (Updated installation logic).
+- **Added**: `AGENTS.md` (Project documentation).
+
+---
 
 
 ## 免责声明
