@@ -78,6 +78,7 @@ interface RemoteUsageNode {
   usedPorts: number[];
   bindings: RemoteUsageBinding[];
   activeBindingNum: number;
+  syncError?: string;
 }
 
 export default function PanelSharingPage() {
@@ -456,6 +457,17 @@ export default function PanelSharingPage() {
                         <span className="text-xs text-default-500">绑定 {node.activeBindingNum || 0}</span>
                       </CardHeader>
                       <CardBody className="text-sm space-y-2">
+                        {node.syncError && (
+                          <div className="px-2 py-1.5 rounded-md bg-warning-50 dark:bg-warning-100/10 text-warning-700 dark:text-warning-400 text-xs">
+                            {node.syncError === "provider_share_deleted"
+                              ? "提供方已删除该分享"
+                              : node.syncError === "provider_share_disabled"
+                                ? "提供方已禁用该分享"
+                                : node.syncError === "provider_share_expired"
+                                  ? "提供方分享已过期"
+                                  : `远程同步失败: ${node.syncError}`}
+                          </div>
+                        )}
                         {node.remoteUrl && <p>远程地址: {node.remoteUrl}</p>}
                         <p>共享ID: {node.shareId || "-"}</p>
                         <p>端口范围: {node.portRangeStart > 0 && node.portRangeEnd > 0 ? `${node.portRangeStart} - ${node.portRangeEnd}` : "-"}</p>
