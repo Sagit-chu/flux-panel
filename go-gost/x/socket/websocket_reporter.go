@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync" // 新增：用于管理连接状态的互斥锁
-	"syscall"
 	"time"
 
 	"github.com/go-gost/x/config"
@@ -1043,10 +1042,11 @@ func (w *WebSocketReporter) handleUpgradeAgent(data interface{}) error {
 	w.sendUpgradeProgress("installing", 80, "准备重启...")
 	fmt.Printf("✅ 升级包下载完成 (%d bytes), 准备重启...\n", downloaded)
 
-	// 执行重启脚本（分离进程，不阻塞当前进程）
+	// 执行重启脚本
+	// 使用 systemd-run 在独立的 transient unit 中运行重启脚本，
+	// 避免 systemctl stop 杀死 flux_agent cgroup 内所有进程（包括此脚本自身）导致 mv 未执行。
 	script := fmt.Sprintf("sleep 1 && systemctl stop flux_agent && mv %s %s && systemctl start flux_agent", tmpPath, binaryPath)
-	cmd := exec.Command("/bin/sh", "-c", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd := exec.Command("systemd-run", "--quiet", "/bin/sh", "-c", script)
 	if err := cmd.Start(); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("启动重启脚本失败: %v", err)
@@ -1068,10 +1068,9 @@ func (w *WebSocketReporter) handleRollbackAgent(data interface{}) error {
 
 	fmt.Println("🔄 开始回退到旧版本...")
 
-	// 执行回退脚本
+	// 执行回退脚本（同升级逻辑，使用 systemd-run 避免 cgroup 问题）
 	script := fmt.Sprintf("sleep 1 && systemctl stop flux_agent && cp %s %s && systemctl start flux_agent", backupPath, binaryPath)
-	cmd := exec.Command("/bin/sh", "-c", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd := exec.Command("systemd-run", "--quiet", "/bin/sh", "-c", script)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("启动回退脚本失败: %v", err)
 	}
