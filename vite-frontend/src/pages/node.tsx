@@ -16,6 +16,7 @@ import { Spinner } from "@heroui/spinner";
 import { Alert } from "@heroui/alert";
 import { Progress } from "@heroui/progress";
 import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Select, SelectItem } from "@heroui/select";
 import { Checkbox } from "@heroui/checkbox";
 import toast from "react-hot-toast";
 import axios from "axios";
@@ -45,6 +46,10 @@ import {
   getNodeInstallCommand,
   updateNodeOrder,
   batchDeleteNodes,
+  upgradeNode,
+  batchUpgradeNodes,
+  getNodeReleases,
+  rollbackNode,
 } from "@/api";
 
 interface Node {
@@ -76,6 +81,8 @@ interface Node {
     uptime: number;
   } | null;
   copyLoading?: boolean;
+  upgradeLoading?: boolean;
+  rollbackLoading?: boolean;
 }
 
 interface NodeForm {
@@ -163,6 +170,16 @@ export default function NodePage() {
   const [installCommandModal, setInstallCommandModal] = useState(false);
   const [installCommand, setInstallCommand] = useState("");
   const [currentNodeName, setCurrentNodeName] = useState("");
+
+  // 升级相关状态
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeTarget, setUpgradeTarget] = useState<"single" | "batch">("single");
+  const [upgradeTargetNodeId, setUpgradeTargetNodeId] = useState<number | null>(null);
+  const [releases, setReleases] = useState<Array<{ version: string; name: string; publishedAt: string; prerelease: boolean }>>([]);
+  const [releasesLoading, setReleasesLoading] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState("");
+  const [batchUpgradeLoading, setBatchUpgradeLoading] = useState(false);
+  const [upgradeProgress, setUpgradeProgress] = useState<Record<number, { stage: string; percent: number; message: string }>>({});
 
   const websocketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -423,6 +440,22 @@ export default function NodePage() {
           return node;
         }),
       );
+    } else if (type === "upgrade_progress") {
+      try {
+        const progressData = typeof messageData === "string" ? JSON.parse(messageData) : messageData;
+        if (progressData?.data) {
+          setUpgradeProgress((prev) => ({
+            ...prev,
+            [nodeId]: {
+              stage: progressData.data.stage || "",
+              percent: progressData.data.percent || 0,
+              message: progressData.message || "",
+            },
+          }));
+        }
+      } catch {
+        // ignore parse errors
+      }
     }
   };
 
@@ -768,6 +801,116 @@ export default function NodePage() {
     }
   };
 
+  // 升级节点
+  const handleUpgradeNode = async (node: Node) => {
+    setNodeList((prev) =>
+      prev.map((n) => (n.id === node.id ? { ...n, upgradeLoading: true } : n)),
+    );
+
+    try {
+      const res = await upgradeNode(node.id);
+
+      if (res.code === 0) {
+        toast.success(`节点 ${node.name} 升级命令已发送，节点将自动重启`);
+      } else {
+        toast.error(res.msg || "升级失败");
+      }
+    } catch {
+      toast.error("网络错误，请重试");
+    } finally {
+      setNodeList((prev) =>
+        prev.map((n) =>
+          n.id === node.id ? { ...n, upgradeLoading: false } : n,
+        ),
+      );
+    }
+  };
+
+  // 打开版本选择弹窗
+  const openUpgradeModal = async (target: "single" | "batch", nodeId?: number) => {
+    setUpgradeTarget(target);
+    setUpgradeTargetNodeId(nodeId || null);
+    setSelectedVersion("");
+    setUpgradeModalOpen(true);
+    setReleasesLoading(true);
+    try {
+      const res = await getNodeReleases();
+      if (res.code === 0 && Array.isArray(res.data)) {
+        setReleases(res.data);
+      } else {
+        toast.error(res.msg || "获取版本列表失败");
+      }
+    } catch {
+      toast.error("获取版本列表失败");
+    } finally {
+      setReleasesLoading(false);
+    }
+  };
+
+  // 确认升级（从版本弹窗）
+  const handleConfirmUpgrade = async () => {
+    const version = selectedVersion || undefined;
+    if (upgradeTarget === "single" && upgradeTargetNodeId) {
+      setUpgradeModalOpen(false);
+      // Find the node
+      const node = nodeList.find((n) => n.id === upgradeTargetNodeId);
+      if (!node) return;
+      setNodeList((prev) =>
+        prev.map((n) => (n.id === upgradeTargetNodeId ? { ...n, upgradeLoading: true } : n)),
+      );
+      try {
+        const res = await upgradeNode(upgradeTargetNodeId, version);
+        if (res.code === 0) {
+          toast.success(`节点升级命令已发送，节点将自动重启`);
+        } else {
+          toast.error(res.msg || "升级失败");
+        }
+      } catch {
+        toast.error("网络错误，请重试");
+      } finally {
+        setNodeList((prev) =>
+          prev.map((n) => (n.id === upgradeTargetNodeId ? { ...n, upgradeLoading: false } : n)),
+        );
+      }
+    } else if (upgradeTarget === "batch") {
+      setBatchUpgradeLoading(true);
+      setUpgradeModalOpen(false);
+      try {
+        const res = await batchUpgradeNodes(Array.from(selectedIds), version);
+        if (res.code === 0) {
+          toast.success(`批量升级命令已发送到 ${selectedIds.size} 个节点`);
+        } else {
+          toast.error(res.msg || "批量升级失败");
+        }
+      } catch {
+        toast.error("网络错误，请重试");
+      } finally {
+        setBatchUpgradeLoading(false);
+      }
+    }
+  };
+
+  // 回退节点
+  const handleRollbackNode = async (node: Node) => {
+    setNodeList((prev) =>
+      prev.map((n) => (n.id === node.id ? { ...n, rollbackLoading: true } : n)),
+    );
+    try {
+      const res = await rollbackNode(node.id);
+      if (res.code === 0) {
+        toast.success(`节点 ${node.name} 回退命令已发送，节点将自动重启`);
+      } else {
+        toast.error(res.msg || "回退失败");
+      }
+    } catch {
+      toast.error("网络错误，请重试");
+    } finally {
+      setNodeList((prev) =>
+        prev.map((n) => (n.id === node.id ? { ...n, rollbackLoading: false } : n)),
+      );
+    }
+  };
+
   // 提交表单
   const handleSubmit = async () => {
     if (!validateForm()) return;
@@ -1047,6 +1190,15 @@ export default function NodePage() {
               清空
             </Button>
             <Button
+              color="warning"
+              isLoading={batchUpgradeLoading}
+              size="sm"
+              variant="flat"
+              onPress={() => openUpgradeModal("batch")}
+            >
+              升级
+            </Button>
+            <Button
               color="danger"
               size="sm"
               variant="flat"
@@ -1226,6 +1378,18 @@ export default function NodePage() {
                                   {node.version || "未知"}
                                 </span>
                               </div>
+                              {upgradeProgress[node.id] && upgradeProgress[node.id].percent < 100 && (
+                                <div className="mt-1">
+                                  <Progress
+                                    aria-label="升级进度"
+                                    color="warning"
+                                    label={upgradeProgress[node.id].message}
+                                    showValueLabel
+                                    size="sm"
+                                    value={upgradeProgress[node.id].percent}
+                                  />
+                                </div>
+                              )}
                               <div className="flex justify-between text-sm">
                                 <span className="text-default-600">开机时间</span>
                                 <span className="text-xs">
@@ -1372,6 +1536,28 @@ export default function NodePage() {
                                   onPress={() => handleCopyInstallCommand(node)}
                                 >
                                   安装
+                                </Button>
+                                <Button
+                                  className="flex-1 min-h-8"
+                                  color="warning"
+                                  isDisabled={node.connectionStatus !== "online"}
+                                  isLoading={node.upgradeLoading}
+                                  size="sm"
+                                  variant="flat"
+                                  onPress={() => openUpgradeModal("single", node.id)}
+                                >
+                                  升级
+                                </Button>
+                                <Button
+                                  className="flex-1 min-h-8"
+                                  color="secondary"
+                                  isDisabled={node.connectionStatus !== "online"}
+                                  isLoading={node.rollbackLoading}
+                                  size="sm"
+                                  variant="flat"
+                                  onPress={() => handleRollbackNode(node)}
+                                >
+                                  回退
                                 </Button>
                                 <Button
                                   className="flex-1 min-h-8"
@@ -1828,6 +2014,84 @@ export default function NodePage() {
               关闭
             </Button>
           </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* 版本选择升级模态框 */}
+      <Modal
+        backdrop="blur"
+        isOpen={upgradeModalOpen}
+        placement="center"
+        scrollBehavior="outside"
+        size="md"
+        onOpenChange={setUpgradeModalOpen}
+      >
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">
+                <h2 className="text-xl font-bold">
+                  {upgradeTarget === "batch"
+                    ? `批量升级 (${selectedIds.size} 个节点)`
+                    : "升级节点"}
+                </h2>
+              </ModalHeader>
+              <ModalBody>
+                {releasesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Spinner size="lg" />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <Select
+                      label="选择版本"
+                      placeholder="留空则使用最新版本"
+                      selectedKeys={selectedVersion ? [selectedVersion] : []}
+                      onSelectionChange={(keys) => {
+                        const selected = Array.from(keys)[0] as string;
+                        setSelectedVersion(selected || "");
+                      }}
+                    >
+                      {releases.map((r) => (
+                        <SelectItem key={r.version} textValue={r.version}>
+                          <div className="flex justify-between items-center">
+                            <span>{r.version}</span>
+                            <span className="text-xs text-default-400">
+                              {r.publishedAt
+                                ? new Date(r.publishedAt).toLocaleDateString()
+                                : ""}
+                              {r.prerelease && (
+                                <Chip className="ml-1" color="warning" size="sm" variant="flat">
+                                  预览
+                                </Chip>
+                              )}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </Select>
+                    <p className="text-sm text-default-500">
+                      {selectedVersion
+                        ? `将升级到版本 ${selectedVersion}`
+                        : "未选择版本，将自动使用最新稳定版"}
+                    </p>
+                  </div>
+                )}
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose}>
+                  取消
+                </Button>
+                <Button
+                  color="warning"
+                  isDisabled={releasesLoading}
+                  onPress={handleConfirmUpgrade}
+                >
+                  确认升级
+                </Button>
+              </ModalFooter>
+            </>
+          )}
         </ModalContent>
       </Modal>
 

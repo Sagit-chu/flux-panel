@@ -190,7 +190,15 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request, nodeID int64
 
 		msg := decryptIfNeeded(payload, secret)
 		s.tryResolvePending(nodeID, msg)
-		s.broadcastInfo(nodeID, msg)
+
+		var parsed struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal([]byte(msg), &parsed) == nil && parsed.Type == "UpgradeProgress" {
+			s.broadcastTyped(nodeID, "upgrade_progress", msg)
+		} else {
+			s.broadcastInfo(nodeID, msg)
+		}
 	}
 }
 
@@ -381,6 +389,12 @@ func (s *Server) broadcastStatus(nodeID int64, status int) {
 
 func (s *Server) broadcastInfo(nodeID int64, data string) {
 	payload := broadcastMessage{ID: nodeID, Type: "info", Data: data}
+	raw, _ := json.Marshal(payload)
+	s.broadcastToAdmins(string(raw))
+}
+
+func (s *Server) broadcastTyped(nodeID int64, msgType string, data string) {
+	payload := broadcastMessage{ID: nodeID, Type: msgType, Data: data}
 	raw, _ := json.Marshal(payload)
 	s.broadcastToAdmins(string(raw))
 }

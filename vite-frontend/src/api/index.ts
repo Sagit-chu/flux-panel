@@ -41,6 +41,14 @@ export const checkNodeStatus = (nodeId?: number) => {
   return Network.post("/node/check-status", params);
 };
 
+export const upgradeNode = (id: number, version?: string) =>
+  Network.post("/node/upgrade", { id, version: version || "" });
+export const batchUpgradeNodes = (ids: number[], version?: string) =>
+  Network.post("/node/batch-upgrade", { ids, version: version || "" });
+export const getNodeReleases = () => Network.post("/node/releases");
+export const rollbackNode = (id: number) =>
+  Network.post("/node/rollback", { id });
+
 // 隧道CRUD操作 - 全部使用POST请求
 export const createTunnel = (data: any) => Network.post("/tunnel/create", data);
 export const getTunnelList = () => Network.post("/tunnel/list");
