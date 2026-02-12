@@ -91,6 +91,11 @@ type TcpPingResponse struct {
 	RequestId    string  `json:"requestId,omitempty"`
 }
 
+const (
+	reporterReadWait  = 60 * time.Second
+	reporterWriteWait = 5 * time.Second
+)
+
 type WebSocketReporter struct {
 	url            string
 	addr           string // 保存服务器地址
@@ -243,6 +248,14 @@ func (w *WebSocketReporter) connect() error {
 
 	w.conn = conn
 	w.connected = true
+	_ = conn.SetReadDeadline(time.Now().Add(reporterReadWait))
+	conn.SetPingHandler(func(appData string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(reporterReadWait))
+		return conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(reporterWriteWait))
+	})
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(reporterReadWait))
+	})
 
 	// 设置关闭处理器来检测连接状态
 	w.conn.SetCloseHandler(func(code int, text string) error {
@@ -383,7 +396,7 @@ func (w *WebSocketReporter) receiveMessages() {
 			}
 
 			// 设置读取超时
-			conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+			conn.SetReadDeadline(time.Now().Add(reporterReadWait))
 
 			messageType, message, err := conn.ReadMessage()
 			if err != nil {
