@@ -306,11 +306,35 @@ func (h *Handler) userList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var req struct {
+		Current int    `json:"current"`
+		Size    int    `json:"size"`
+		Keyword string `json:"keyword"`
+	}
+	if err := decodeJSON(r.Body, &req); err != nil && err != io.EOF {
+		response.WriteJSON(w, response.ErrDefault("请求参数错误"))
+		return
+	}
+
 	users, err := h.repo.ListUsers()
 	if err != nil {
 		response.WriteJSON(w, response.Err(-2, err.Error()))
 		return
 	}
+
+	keyword := strings.ToLower(strings.TrimSpace(req.Keyword))
+	if keyword != "" {
+		filtered := make([]map[string]interface{}, 0, len(users))
+		for _, item := range users {
+			username := strings.ToLower(strings.TrimSpace(fmt.Sprint(item["user"])))
+			displayName := strings.ToLower(strings.TrimSpace(fmt.Sprint(item["name"])))
+			if strings.Contains(username, keyword) || strings.Contains(displayName, keyword) {
+				filtered = append(filtered, item)
+			}
+		}
+		users = filtered
+	}
+
 	response.WriteJSON(w, response.OK(users))
 }
 
