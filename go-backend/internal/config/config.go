@@ -6,7 +6,6 @@ type Config struct {
 	Addr      string
 	DBPath    string
 	JWTSecret string
-	LogDir    string
 }
 
 func FromEnv() Config {
@@ -14,7 +13,6 @@ func FromEnv() Config {
 		Addr:      getEnv("SERVER_ADDR", ":6365"),
 		DBPath:    getEnv("DB_PATH", "/app/data/gost.db"),
 		JWTSecret: getEnv("JWT_SECRET", ""),
-		LogDir:    getEnv("LOG_DIR", "/app/logs"),
 	}
 
 	return cfg

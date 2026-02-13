@@ -361,7 +361,7 @@ func (r *Repository) GetUserPackageForwards(userID int64) ([]UserForwardDetail, 
 	}
 
 	rows, err := r.db.Query(`
-		SELECT f.id, f.name, f.tunnel_id, t.name, f.remote_addr, f.in_flow, f.out_flow, f.status, f.created_time
+		SELECT f.id, f.name, f.tunnel_id, COALESCE(t.name, ''), f.remote_addr, f.in_flow, f.out_flow, f.status, f.created_time
 		FROM forward f
 		LEFT JOIN tunnel t ON t.id = f.tunnel_id
 		WHERE f.user_id = ?
@@ -680,7 +680,7 @@ func (r *Repository) ListForwards() ([]map[string]interface{}, error) {
 	}
 
 	rows, err := r.db.Query(`
-		SELECT f.id, f.user_id, f.user_name, f.name, f.tunnel_id, t.name, f.remote_addr, f.strategy,
+		SELECT f.id, f.user_id, f.user_name, f.name, f.tunnel_id, COALESCE(t.name, ''), f.remote_addr, f.strategy,
 		       f.in_flow, f.out_flow, f.created_time, f.status, f.inx
 		FROM forward f
 		LEFT JOIN tunnel t ON t.id = f.tunnel_id
@@ -858,7 +858,7 @@ func (r *Repository) ListTunnels() ([]map[string]interface{}, error) {
 	}
 
 	chainRows, err := r.db.Query(`
-		SELECT tunnel_id, chain_type, node_id, protocol, strategy, COALESCE(inx, 0)
+		SELECT tunnel_id, CAST(chain_type AS INTEGER), node_id, protocol, strategy, COALESCE(inx, 0)
 		FROM chain_tunnel
 		ORDER BY tunnel_id ASC, chain_type ASC, inx ASC, id ASC
 	`)
@@ -1258,9 +1258,30 @@ func bootstrapSchema(db *sql.DB) error {
 	return nil
 }
 
+const currentSchemaVersion = 1
+
+func getSchemaVersion(db *sql.DB) int {
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL DEFAULT 0)`)
+	var v int
+	if err := db.QueryRow(`SELECT version FROM schema_version LIMIT 1`).Scan(&v); err != nil {
+		_, _ = db.Exec(`INSERT INTO schema_version(version) VALUES(0)`)
+		return 0
+	}
+	return v
+}
+
+func setSchemaVersion(db *sql.DB, v int) {
+	_, _ = db.Exec(`UPDATE schema_version SET version = ?`, v)
+}
+
 func migrateSchema(db *sql.DB) error {
 	if db == nil {
 		return errors.New("nil db")
+	}
+
+	ver := getSchemaVersion(db)
+	if ver >= currentSchemaVersion {
+		return nil
 	}
 
 	ensureColumn := func(table, col, typ string) {
@@ -1269,10 +1290,9 @@ func migrateSchema(db *sql.DB) error {
 		if err == nil || errors.Is(err, sql.ErrNoRows) {
 			return
 		}
-		if strings.Contains(err.Error(), "no such column") {
-			if _, alterErr := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, col, typ)); alterErr != nil {
-				log.Printf("failed to add column %s to %s: %v", col, table, alterErr)
-			}
+		// Column likely missing (SQLite: "no such column", PG: "does not exist", etc.)
+		if _, alterErr := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, col, typ)); alterErr != nil {
+			log.Printf("failed to add column %s to %s: %v", col, table, alterErr)
 		}
 	}
 
@@ -1306,6 +1326,8 @@ func migrateSchema(db *sql.DB) error {
 			ensureColumn(table, col, typ)
 		}
 	}
+
+	setSchemaVersion(db, currentSchemaVersion)
 	return nil
 }
 
