@@ -200,6 +200,26 @@ func (h *Handler) listForwardPorts(forwardID int64) ([]forwardPortRecord, error)
 	return result, nil
 }
 
+func (h *Handler) isTunnelSelectedTLSProtocol(tunnelID int64) (bool, error) {
+	row := h.repo.DB().QueryRow(`
+		SELECT protocol
+		FROM chain_tunnel
+		WHERE tunnel_id = ? AND chain_type = '3'
+		ORDER BY id ASC
+		LIMIT 1
+	`, tunnelID)
+
+	var protocol sql.NullString
+	if err := row.Scan(&protocol); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return isTLSTunnelProtocol(protocol.String), nil
+}
+
 func (h *Handler) getNodeRecord(nodeID int64) (*nodeRecord, error) {
 	row := h.repo.DB().QueryRow(`
 		SELECT id, name, server_ip, server_ip_v4, server_ip_v6, status, port, tcp_listen_addr, udp_listen_addr, interface_name, is_remote, remote_url, remote_token, remote_config
@@ -346,6 +366,10 @@ func (h *Handler) syncForwardServices(forward *forwardRecord, method string, all
 		return err
 	}
 	serviceBase := buildForwardServiceBase(forward.ID, forward.UserID, userTunnelID)
+	tunnelTLSProtocol, err := h.isTunnelSelectedTLSProtocol(forward.TunnelID)
+	if err != nil {
+		return err
+	}
 
 	for _, fp := range ports {
 		if limiterID != nil && speed != nil {
@@ -356,7 +380,7 @@ func (h *Handler) syncForwardServices(forward *forwardRecord, method string, all
 		if err != nil {
 			return err
 		}
-		services := buildForwardServiceConfigs(serviceBase, forward, tunnel, node, fp.Port, limiterID)
+		services := buildForwardServiceConfigs(serviceBase, forward, tunnel, node, fp.Port, limiterID, tunnelTLSProtocol)
 		_, err = h.sendNodeCommand(node.ID, method, services, true, false)
 		if err != nil && allowFallbackAdd && method == "UpdateService" {
 			_, err = h.sendNodeCommand(node.ID, "AddService", services, true, false)
@@ -1095,7 +1119,7 @@ func isNotFoundError(err error) bool {
 	return strings.Contains(msg, "not found") || strings.Contains(msg, "不存在")
 }
 
-func buildForwardServiceConfigs(baseName string, forward *forwardRecord, tunnel *tunnelRecord, node *nodeRecord, port int, limiterID *int64) []map[string]interface{} {
+func buildForwardServiceConfigs(baseName string, forward *forwardRecord, tunnel *tunnelRecord, node *nodeRecord, port int, limiterID *int64, tunnelTLSProtocol bool) []map[string]interface{} {
 	protocols := []string{"tcp", "udp"}
 	services := make([]map[string]interface{}, 0, 2)
 	targets := splitRemoteTargets(forward.RemoteAddr)
@@ -1128,7 +1152,11 @@ func buildForwardServiceConfigs(baseName string, forward *forwardRecord, tunnel 
 			},
 		}
 		if protocol == "udp" {
-			service["listener"].(map[string]interface{})["metadata"] = map[string]interface{}{"keepAlive": true}
+			listenerMetadata := map[string]interface{}{"keepAlive": true}
+			if tunnelTLSProtocol {
+				listenerMetadata["ttl"] = "10s"
+			}
+			service["listener"].(map[string]interface{})["metadata"] = listenerMetadata
 		}
 		if tunnel != nil && tunnel.Type == 2 {
 			service["handler"].(map[string]interface{})["chain"] = fmt.Sprintf("chains_%d", forward.TunnelID)
