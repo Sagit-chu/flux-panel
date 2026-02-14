@@ -784,7 +784,7 @@ func (r *Repository) ListUserAccessibleTunnels(userID int64) ([]map[string]inter
 	}
 
 	rows, err := r.db.Query(`
-		SELECT DISTINCT t.id, t.name
+		SELECT t.id, t.name
 		FROM user_tunnel ut
 		JOIN tunnel t ON t.id = ut.tunnel_id
 		WHERE ut.user_id = ? AND t.status = 1
