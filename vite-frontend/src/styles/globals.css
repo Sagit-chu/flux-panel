@@ -59,6 +59,12 @@ html, body {
   box-shadow: none !important;
 }
 
+[data-slot="input-wrapper"] input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
 .safe-top {
   padding-top: var(--safe-area-top);
 }
