@@ -569,12 +569,10 @@ func (h *Handler) tunnelCreate(w http.ResponseWriter, r *http.Request) {
 	runtimeState.TunnelID = tunnelID
 	var federationBindings []sqlite.FederationTunnelBinding
 	var federationReleaseRefs []federationRuntimeReleaseRef
-	if typeVal == 2 {
-		federationBindings, federationReleaseRefs, err = h.applyFederationRuntime(runtimeState)
-		if err != nil {
-			response.WriteJSON(w, response.ErrDefault(err.Error()))
-			return
-		}
+	federationBindings, federationReleaseRefs, err = h.applyFederationRuntime(runtimeState)
+	if err != nil {
+		response.WriteJSON(w, response.ErrDefault(err.Error()))
+		return
 	}
 	applyTunnelPortsToRequest(req, runtimeState)
 	if err := replaceTunnelChainsTx(tx, tunnelID, req); err != nil {
@@ -693,12 +691,10 @@ func (h *Handler) tunnelUpdate(w http.ResponseWriter, r *http.Request) {
 
 	var federationBindings []sqlite.FederationTunnelBinding
 	var federationReleaseRefs []federationRuntimeReleaseRef
-	if typeVal == 2 {
-		federationBindings, federationReleaseRefs, err = h.applyFederationRuntime(runtimeState)
-		if err != nil {
-			response.WriteJSON(w, response.ErrDefault(err.Error()))
-			return
-		}
+	federationBindings, federationReleaseRefs, err = h.applyFederationRuntime(runtimeState)
+	if err != nil {
+		response.WriteJSON(w, response.ErrDefault(err.Error()))
+		return
 	}
 	applyTunnelPortsToRequest(req, runtimeState)
 
@@ -2340,7 +2336,7 @@ func (h *Handler) federationLocalDomain() string {
 func (h *Handler) applyFederationRuntime(state *tunnelCreateState) ([]sqlite.FederationTunnelBinding, []federationRuntimeReleaseRef, error) {
 	bindings := make([]sqlite.FederationTunnelBinding, 0)
 	releaseRefs := make([]federationRuntimeReleaseRef, 0)
-	if h == nil || state == nil || state.Type != 2 {
+	if h == nil || state == nil {
 		return bindings, releaseRefs, nil
 	}
 	fc := client.NewFederationClient()

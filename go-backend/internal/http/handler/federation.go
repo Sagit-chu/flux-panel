@@ -780,9 +780,6 @@ func (h *Handler) federationTunnelCreate(w http.ResponseWriter, r *http.Request)
 	}
 
 	tunnelType := 1
-	if strings.ToLower(req.Protocol) == "udp" {
-		tunnelType = 2
-	}
 
 	tx, err := h.repo.DB().Begin()
 	if err != nil {
