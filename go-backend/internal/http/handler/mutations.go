@@ -545,6 +545,11 @@ func (h *Handler) tunnelCreate(w http.ResponseWriter, r *http.Request) {
 				}
 
 				if targetPort > 0 && targetAddr != "" {
+					inNodeRec := runtimeState.Nodes[firstNodeID]
+					if err := validateRemoteNodePort(inNodeRec, targetPort); err != nil {
+						response.WriteJSON(w, response.ErrDefault(err.Error()))
+						return
+					}
 					domainCfg, _ := h.repo.GetConfigByName("panel_domain")
 					localDomain := ""
 					if domainCfg != nil {
@@ -1105,6 +1110,17 @@ func (h *Handler) forwardCreate(w http.ResponseWriter, r *http.Request) {
 	if port <= 0 {
 		port = 10000
 	}
+	entryNodes, _ := h.tunnelEntryNodeIDs(tunnelID)
+	for _, nodeID := range entryNodes {
+		node, nodeErr := h.getNodeRecord(nodeID)
+		if nodeErr != nil {
+			continue
+		}
+		if err := validateRemoteNodePort(node, port); err != nil {
+			response.WriteJSON(w, response.ErrDefault(err.Error()))
+			return
+		}
+	}
 	now := time.Now().UnixMilli()
 	inx := nextIndex(h.repo.DB(), "forward")
 	var userName string
@@ -1126,7 +1142,6 @@ func (h *Handler) forwardCreate(w http.ResponseWriter, r *http.Request) {
 		response.WriteJSON(w, response.Err(-2, err.Error()))
 		return
 	}
-	entryNodes, _ := h.tunnelEntryNodeIDs(tunnelID)
 	for _, nodeID := range entryNodes {
 		_, _ = tx.Exec(`INSERT INTO forward_port(forward_id, node_id, port) VALUES(?, ?, ?)`, forwardID, nodeID, port)
 	}
@@ -1214,6 +1229,17 @@ func (h *Handler) forwardUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		if port <= 0 {
 			port = h.pickTunnelPort(tunnelID)
+		}
+	}
+	fwdEntryNodes, _ := h.tunnelEntryNodeIDs(tunnelID)
+	for _, nodeID := range fwdEntryNodes {
+		node, nodeErr := h.getNodeRecord(nodeID)
+		if nodeErr != nil {
+			continue
+		}
+		if err := validateRemoteNodePort(node, port); err != nil {
+			response.WriteJSON(w, response.ErrDefault(err.Error()))
+			return
 		}
 	}
 	now := time.Now().UnixMilli()
@@ -1539,6 +1565,22 @@ func (h *Handler) forwardBatchChangeTunnel(w http.ResponseWriter, r *http.Reques
 		}
 		if p <= 0 {
 			p = h.pickTunnelPort(req.TargetTunnelID)
+		}
+		bctEntryNodes, _ := h.tunnelEntryNodeIDs(req.TargetTunnelID)
+		portRangeOk := true
+		for _, nid := range bctEntryNodes {
+			nd, ndErr := h.getNodeRecord(nid)
+			if ndErr != nil {
+				continue
+			}
+			if validateRemoteNodePort(nd, p) != nil {
+				portRangeOk = false
+				break
+			}
+		}
+		if !portRangeOk {
+			fail++
+			continue
 		}
 		if err := h.replaceForwardPorts(id, req.TargetTunnelID, p); err != nil {
 			h.rollbackForwardMutation(forward, oldPorts)
@@ -2233,6 +2275,19 @@ func (h *Handler) prepareTunnelCreateState(tx *store.Tx, req map[string]interfac
 			return nil, errors.New("部分节点不在线")
 		}
 		state.Nodes[nodeID] = node
+	}
+
+	for _, outNode := range state.OutNodes {
+		if err := validateRemoteNodePort(state.Nodes[outNode.NodeID], outNode.Port); err != nil {
+			return nil, err
+		}
+	}
+	for _, hop := range state.ChainHops {
+		for _, chainNode := range hop {
+			if err := validateRemoteNodePort(state.Nodes[chainNode.NodeID], chainNode.Port); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	return state, nil

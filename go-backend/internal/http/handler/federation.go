@@ -544,6 +544,28 @@ func (h *Handler) federationRemoteUsageList(w http.ResponseWriter, r *http.Reque
 	response.WriteJSON(w, response.OK(items))
 }
 
+func remoteNodePortRange(node *nodeRecord) (int, int) {
+	if node == nil || node.IsRemote != 1 || node.RemoteConfig == "" {
+		return 0, 0
+	}
+	_, _, _, _, portRangeStart, portRangeEnd := parseRemoteShareUsageConfig(node.RemoteConfig)
+	return portRangeStart, portRangeEnd
+}
+
+func validateRemoteNodePort(node *nodeRecord, port int) error {
+	if node == nil || node.IsRemote != 1 || port <= 0 {
+		return nil
+	}
+	start, end := remoteNodePortRange(node)
+	if start <= 0 || end <= 0 {
+		return nil
+	}
+	if port < start || port > end {
+		return fmt.Errorf("远程节点端口 %d 超出允许范围 %d-%d", port, start, end)
+	}
+	return nil
+}
+
 func parseRemoteShareUsageConfig(raw string) (int64, int64, int64, int64, int, int) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -980,6 +1002,13 @@ func (h *Handler) federationRuntimeApplyRole(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if share.PortRangeStart > 0 && share.PortRangeEnd > 0 && runtime.Port > 0 {
+		if runtime.Port < share.PortRangeStart || runtime.Port > share.PortRangeEnd {
+			response.WriteJSON(w, response.Err(403, fmt.Sprintf("port %d out of allowed range %d-%d", runtime.Port, share.PortRangeStart, share.PortRangeEnd)))
+			return
+		}
+	}
+
 	node, err := h.getNodeRecord(share.NodeID)
 	if err != nil {
 		response.WriteJSON(w, response.ErrDefault(err.Error()))
@@ -1271,35 +1300,35 @@ func validateFederationCommandPorts(share *sqlite.PeerShare, data interface{}) e
 	if !ok {
 		return nil
 	}
-	services, ok := dataMap["services"]
-	if !ok {
-		return nil
-	}
-	serviceList, ok := services.([]interface{})
-	if !ok {
-		return nil
-	}
-	for _, svc := range serviceList {
-		svcMap, ok := svc.(map[string]interface{})
+
+	if services, ok := dataMap["services"]; ok {
+		serviceList, ok := services.([]interface{})
 		if !ok {
-			continue
+			return fmt.Errorf("invalid services format")
 		}
-		addr, ok := svcMap["addr"].(string)
-		if !ok || addr == "" {
-			continue
-		}
-		_, portStr, err := net.SplitHostPort(addr)
-		if err != nil {
-			continue
-		}
-		port, err := strconv.Atoi(portStr)
-		if err != nil || port <= 0 {
-			continue
-		}
-		if port < share.PortRangeStart || port > share.PortRangeEnd {
-			return fmt.Errorf("port %d out of allowed range %d-%d", port, share.PortRangeStart, share.PortRangeEnd)
+		for _, svc := range serviceList {
+			svcMap, ok := svc.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("invalid service entry format")
+			}
+			addr, ok := svcMap["addr"].(string)
+			if !ok || addr == "" {
+				continue
+			}
+			_, portStr, err := net.SplitHostPort(addr)
+			if err != nil {
+				return fmt.Errorf("invalid service address: %s", addr)
+			}
+			port, err := strconv.Atoi(portStr)
+			if err != nil || port <= 0 {
+				return fmt.Errorf("invalid port in service address: %s", addr)
+			}
+			if port < share.PortRangeStart || port > share.PortRangeEnd {
+				return fmt.Errorf("port %d out of allowed range %d-%d", port, share.PortRangeStart, share.PortRangeEnd)
+			}
 		}
 	}
+
 	return nil
 }
 
