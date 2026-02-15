@@ -2012,19 +2012,25 @@ type ChainTunnelBackup struct {
 }
 
 type ForwardBackup struct {
-	ID          int64  `json:"id"`
-	UserID      int64  `json:"userId"`
-	UserName    string `json:"userName"`
-	Name        string `json:"name"`
-	TunnelID    int64  `json:"tunnelId"`
-	RemoteAddr  string `json:"remoteAddr"`
-	Strategy    string `json:"strategy"`
-	InFlow      int64  `json:"inFlow"`
-	OutFlow     int64  `json:"outFlow"`
-	CreatedTime int64  `json:"createdTime"`
-	UpdatedTime int64  `json:"updatedTime"`
-	Status      int    `json:"status"`
-	Inx         int    `json:"inx"`
+	ID           int64                `json:"id"`
+	UserID       int64                `json:"userId"`
+	UserName     string               `json:"userName"`
+	Name         string               `json:"name"`
+	TunnelID     int64                `json:"tunnelId"`
+	RemoteAddr   string               `json:"remoteAddr"`
+	Strategy     string               `json:"strategy"`
+	InFlow       int64                `json:"inFlow"`
+	OutFlow      int64                `json:"outFlow"`
+	CreatedTime  int64                `json:"createdTime"`
+	UpdatedTime  int64                `json:"updatedTime"`
+	Status       int                  `json:"status"`
+	Inx          int                  `json:"inx"`
+	ForwardPorts *[]ForwardPortBackup `json:"forwardPorts,omitempty"`
+}
+
+type ForwardPortBackup struct {
+	NodeID int64 `json:"nodeId"`
+	Port   int   `json:"port"`
 }
 
 type UserTunnelBackup struct {
@@ -2426,9 +2432,45 @@ func (r *Repository) exportForwards() ([]ForwardBackup, error) {
 		if inx.Valid {
 			f.Inx = int(inx.Int64)
 		}
+
+		forwardPorts, err := r.exportForwardPorts(f.ID)
+		if err != nil {
+			return nil, err
+		}
+		portsCopy := append([]ForwardPortBackup(nil), forwardPorts...)
+		f.ForwardPorts = &portsCopy
+
 		forwards = append(forwards, f)
 	}
 	return forwards, rows.Err()
+}
+
+func (r *Repository) exportForwardPorts(forwardID int64) ([]ForwardPortBackup, error) {
+	rows, err := r.db.Query(`
+		SELECT node_id, port
+		FROM forward_port
+		WHERE forward_id = ?
+		ORDER BY id ASC
+	`, forwardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ports := make([]ForwardPortBackup, 0)
+	for rows.Next() {
+		var fp ForwardPortBackup
+		if err := rows.Scan(&fp.NodeID, &fp.Port); err != nil {
+			return nil, err
+		}
+		ports = append(ports, fp)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return ports, nil
 }
 
 func (r *Repository) exportUserTunnels() ([]UserTunnelBackup, error) {
@@ -2845,6 +2887,18 @@ func (r *Repository) importForwards(db Execer, forwards []ForwardBackup, now int
 		if err != nil {
 			return count, err
 		}
+
+		if f.ForwardPorts != nil {
+			if _, err := db.Exec(`DELETE FROM forward_port WHERE forward_id = ?`, f.ID); err != nil {
+				return count, err
+			}
+			for _, fp := range *f.ForwardPorts {
+				if _, err := db.Exec(`INSERT INTO forward_port(forward_id, node_id, port) VALUES(?, ?, ?)`, f.ID, fp.NodeID, fp.Port); err != nil {
+					return count, err
+				}
+			}
+		}
+
 		count++
 	}
 	return count, nil
