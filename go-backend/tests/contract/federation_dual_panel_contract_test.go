@@ -112,10 +112,7 @@ func TestFederationDualPanelMiddleExitAutoPortContract(t *testing.T) {
 		consumerRouter.ServeHTTP(res, req)
 		assertCode(t, res, 0)
 
-		var tunnelID int64
-		if err := consumerRepo.DB().Raw(`SELECT id FROM tunnel WHERE name = ? ORDER BY id DESC LIMIT 1`, name).Row().Scan(&tunnelID); err != nil {
-			t.Fatalf("query tunnel id (%s): %v", name, err)
-		}
+		tunnelID := mustQueryInt64(t, consumerRepo, `SELECT id FROM tunnel WHERE name = ? ORDER BY id DESC LIMIT 1`, name)
 		if tunnelID <= 0 {
 			t.Fatalf("invalid tunnel id for %s", name)
 		}
@@ -261,10 +258,7 @@ func TestFederationDualPanelRemoteDiagnosisContract(t *testing.T) {
 	consumerRouter.ServeHTTP(createRes, createReq)
 	assertCode(t, createRes, 0)
 
-	var tunnelID int64
-	if err := consumerRepo.DB().Raw(`SELECT id FROM tunnel WHERE name = ? ORDER BY id DESC LIMIT 1`, "dual-panel-diagnose-remote").Row().Scan(&tunnelID); err != nil {
-		t.Fatalf("query tunnel id: %v", err)
-	}
+	tunnelID := mustQueryInt64(t, consumerRepo, `SELECT id FROM tunnel WHERE name = ? ORDER BY id DESC LIMIT 1`, "dual-panel-diagnose-remote")
 	if tunnelID <= 0 {
 		t.Fatalf("invalid tunnel id")
 	}
@@ -414,10 +408,7 @@ func TestFederationDualPanelRemoteEntryRuntimeContract(t *testing.T) {
 		consumerRouter.ServeHTTP(res, req)
 		assertCode(t, res, 0)
 
-		var tunnelID int64
-		if err := consumerRepo.DB().Raw(`SELECT id FROM tunnel WHERE name = ? ORDER BY id DESC LIMIT 1`, name).Row().Scan(&tunnelID); err != nil {
-			t.Fatalf("query tunnel id (%s): %v", name, err)
-		}
+		tunnelID := mustQueryInt64(t, consumerRepo, `SELECT id FROM tunnel WHERE name = ? ORDER BY id DESC LIMIT 1`, name)
 		if tunnelID <= 0 {
 			t.Fatalf("invalid tunnel id for %s", name)
 		}
@@ -455,11 +446,7 @@ func insertContractNode(t *testing.T, r *repo.Repository, name, ip, portRange, s
 	`, name, secret, ip, ip, "", portRange, "", "v1", 1, 1, 1, now, now, status, "[::]", "[::]", 0).Error; err != nil {
 		t.Fatalf("insert node %s: %v", name, err)
 	}
-	var id int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); err != nil {
-		t.Fatalf("node id %s: %v", name, err)
-	}
-	return id
+	return mustLastInsertID(t, r, name)
 }
 
 func insertPeerShare(t *testing.T, r *repo.Repository, share *repo.PeerShare) int64 {
@@ -499,10 +486,7 @@ func importRemoteNodeForContract(t *testing.T, router http.Handler, adminToken, 
 
 func queryRemoteNodeIDByToken(t *testing.T, r *repo.Repository, token string) int64 {
 	t.Helper()
-	var id int64
-	if err := r.DB().Raw(`SELECT id FROM node WHERE is_remote = 1 AND remote_token = ? ORDER BY id DESC LIMIT 1`, token).Row().Scan(&id); err != nil {
-		t.Fatalf("query remote node by token %s: %v", token, err)
-	}
+	id := mustQueryInt64(t, r, `SELECT id FROM node WHERE is_remote = 1 AND remote_token = ? ORDER BY id DESC LIMIT 1`, token)
 	if id <= 0 {
 		t.Fatalf("invalid remote node id for token %s", token)
 	}
@@ -511,16 +495,7 @@ func queryRemoteNodeIDByToken(t *testing.T, r *repo.Repository, token string) in
 
 func assertTunnelPortInRange(t *testing.T, r *repo.Repository, tunnelID int64, chainType int, nodeID int64, minPort int, maxPort int) {
 	t.Helper()
-	var port int
-	err := r.DB().Raw(`
-		SELECT port
-		FROM chain_tunnel
-		WHERE tunnel_id = ? AND chain_type = ? AND node_id = ?
-		LIMIT 1
-	`, tunnelID, chainType, nodeID).Row().Scan(&port)
-	if err != nil {
-		t.Fatalf("query tunnel=%d chainType=%d node=%d port: %v", tunnelID, chainType, nodeID, err)
-	}
+	port := mustQueryInt(t, r, `SELECT port FROM chain_tunnel WHERE tunnel_id = ? AND chain_type = ? AND node_id = ? LIMIT 1`, tunnelID, chainType, nodeID)
 	if port < minPort || port > maxPort {
 		t.Fatalf("expected port in range [%d,%d], got %d", minPort, maxPort, port)
 	}
@@ -528,10 +503,7 @@ func assertTunnelPortInRange(t *testing.T, r *repo.Repository, tunnelID int64, c
 
 func assertCount(t *testing.T, r *repo.Repository, query string, arg interface{}, expected int) {
 	t.Helper()
-	var got int
-	if err := r.DB().Raw(query, arg).Row().Scan(&got); err != nil {
-		t.Fatalf("count query failed: %v", err)
-	}
+	got := mustQueryInt(t, r, query, arg)
 	if got != expected {
 		t.Fatalf("expected count %d, got %d (query: %s, arg: %v)", expected, got, query, arg)
 	}
@@ -641,8 +613,8 @@ func waitNodeStatus(t *testing.T, r *repo.Repository, nodeID int64, expectedStat
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		var status int
-		if err := r.DB().Raw(`SELECT status FROM node WHERE id = ?`, nodeID).Row().Scan(&status); err == nil && status == expectedStatus {
+		status, err := tryQueryInt(t, r, `SELECT status FROM node WHERE id = ?`, nodeID)
+		if err == nil && status == expectedStatus {
 			return
 		}
 		if time.Now().After(deadline) {

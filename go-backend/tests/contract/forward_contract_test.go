@@ -31,10 +31,7 @@ func TestForwardOwnershipAndScopeContracts(t *testing.T) {
 	`, "contract-tunnel", 1.0, 1, "tls", 99999, now, now, 1, nil, 0).Error; err != nil {
 		t.Fatalf("insert tunnel: %v", err)
 	}
-	var tunnelID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-		t.Fatalf("get tunnel id: %v", err)
-	}
+	tunnelID := mustLastInsertID(t, repo, "contract-tunnel")
 
 	if err := repo.DB().Exec(`
 		INSERT INTO node(name, secret, server_ip, server_ip_v4, server_ip_v6, port, interface_name, version, http, tls, socks, created_time, updated_time, status, tcp_listen_addr, udp_listen_addr, inx)
@@ -42,10 +39,7 @@ func TestForwardOwnershipAndScopeContracts(t *testing.T) {
 	`, "entry-node", "entry-secret", "10.0.0.10", "10.0.0.10", "", "20000-20010", "", "v1", 1, 1, 1, now, now, 1, "[::]", "[::]", 0).Error; err != nil {
 		t.Fatalf("insert node: %v", err)
 	}
-	var entryNodeID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&entryNodeID); err != nil {
-		t.Fatalf("get node id: %v", err)
-	}
+	entryNodeID := mustLastInsertID(t, repo, "entry-node")
 
 	if err := repo.DB().Exec(`
 		INSERT INTO chain_tunnel(tunnel_id, chain_type, node_id, port, strategy, inx, protocol)
@@ -60,10 +54,7 @@ func TestForwardOwnershipAndScopeContracts(t *testing.T) {
 	`, 1, "admin_user", "admin-forward", tunnelID, "1.1.1.1:443", "fifo", now, now, 0).Error; err != nil {
 		t.Fatalf("insert admin forward: %v", err)
 	}
-	var adminForwardID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&adminForwardID); err != nil {
-		t.Fatalf("get admin forward id: %v", err)
-	}
+	adminForwardID := mustLastInsertID(t, repo, "admin-forward")
 
 	if err := repo.DB().Exec(`
 		INSERT INTO forward(user_id, user_name, name, tunnel_id, remote_addr, strategy, in_flow, out_flow, created_time, updated_time, status, inx)
@@ -71,10 +62,7 @@ func TestForwardOwnershipAndScopeContracts(t *testing.T) {
 	`, 2, "normal_user", "user-forward", tunnelID, "8.8.8.8:53", "fifo", now, now, 1).Error; err != nil {
 		t.Fatalf("insert user forward: %v", err)
 	}
-	var userForwardID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&userForwardID); err != nil {
-		t.Fatalf("get user forward id: %v", err)
-	}
+	userForwardID := mustLastInsertID(t, repo, "user-forward")
 
 	userToken, err := auth.GenerateToken(2, "normal_user", 1, secret)
 	if err != nil {
@@ -217,11 +205,7 @@ func TestForwardSwitchTunnelRollbackOnSyncFailure(t *testing.T) {
 		`, name, 1.0, 1, "tls", 99999, now, now, 1, nil, inx).Error; err != nil {
 			t.Fatalf("insert tunnel %s: %v", name, err)
 		}
-		var id int64
-		if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); err != nil {
-			t.Fatalf("get tunnel id %s: %v", name, err)
-		}
-		return id
+		return mustLastInsertID(t, repo, name)
 	}
 
 	insertNode := func(name, ip, portRange string, inx int) int64 {
@@ -231,11 +215,7 @@ func TestForwardSwitchTunnelRollbackOnSyncFailure(t *testing.T) {
 		`, name, name+"-secret", ip, ip, "", portRange, "", "v1", 1, 1, 1, now, now, 1, "[::]", "[::]", inx).Error; err != nil {
 			t.Fatalf("insert node %s: %v", name, err)
 		}
-		var id int64
-		if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); err != nil {
-			t.Fatalf("get node id %s: %v", name, err)
-		}
-		return id
+		return mustLastInsertID(t, repo, name)
 	}
 
 	tunnelA := insertTunnel("switch-tunnel-a", 0)
@@ -275,10 +255,7 @@ func TestForwardSwitchTunnelRollbackOnSyncFailure(t *testing.T) {
 	`, tunnelA, now, now).Error; err != nil {
 		t.Fatalf("insert forward: %v", err)
 	}
-	var forwardID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&forwardID); err != nil {
-		t.Fatalf("get forward id: %v", err)
-	}
+	forwardID := mustLastInsertID(t, repo, "switch-forward")
 
 	if err := repo.DB().Exec(`INSERT INTO forward_port(forward_id, node_id, port) VALUES(?, ?, ?)`, forwardID, nodeA, 21001).Error; err != nil {
 		t.Fatalf("insert forward_port: %v", err)
@@ -300,19 +277,12 @@ func TestForwardSwitchTunnelRollbackOnSyncFailure(t *testing.T) {
 		t.Fatalf("expected update failure when node is offline")
 	}
 
-	var tunnelAfter int64
-	if err := repo.DB().Raw(`SELECT tunnel_id FROM forward WHERE id = ?`, forwardID).Row().Scan(&tunnelAfter); err != nil {
-		t.Fatalf("query forward tunnel_id: %v", err)
-	}
+	tunnelAfter := mustQueryInt64(t, repo, `SELECT tunnel_id FROM forward WHERE id = ?`, forwardID)
 	if tunnelAfter != tunnelA {
 		t.Fatalf("expected tunnel rollback to %d, got %d", tunnelA, tunnelAfter)
 	}
 
-	var nodeAfter int64
-	var portAfter int
-	if err := repo.DB().Raw(`SELECT node_id, port FROM forward_port WHERE forward_id = ? LIMIT 1`, forwardID).Row().Scan(&nodeAfter, &portAfter); err != nil {
-		t.Fatalf("query forward_port: %v", err)
-	}
+	nodeAfter, portAfter := mustQueryInt64Int(t, repo, `SELECT node_id, port FROM forward_port WHERE forward_id = ? LIMIT 1`, forwardID)
 	if nodeAfter != nodeA || portAfter != 21001 {
 		t.Fatalf("expected forward_port rollback to node=%d port=21001, got node=%d port=%d", nodeA, nodeAfter, portAfter)
 	}
@@ -341,10 +311,7 @@ func TestForwardBatchChangeTunnelRollbackOnSyncFailure(t *testing.T) {
 	`, now, now).Error; err != nil {
 		t.Fatalf("insert tunnel A: %v", err)
 	}
-	var tunnelA int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelA); err != nil {
-		t.Fatal(err)
-	}
+	tunnelA := mustLastInsertID(t, repo, "batch-switch-tunnel-a")
 
 	if err := repo.DB().Exec(`
 		INSERT INTO tunnel(name, traffic_ratio, type, protocol, flow, created_time, updated_time, status, in_ip, inx)
@@ -352,10 +319,7 @@ func TestForwardBatchChangeTunnelRollbackOnSyncFailure(t *testing.T) {
 	`, now, now).Error; err != nil {
 		t.Fatalf("insert tunnel B: %v", err)
 	}
-	var tunnelB int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelB); err != nil {
-		t.Fatal(err)
-	}
+	tunnelB := mustLastInsertID(t, repo, "batch-switch-tunnel-b")
 
 	if err := repo.DB().Exec(`
 		INSERT INTO node(name, secret, server_ip, server_ip_v4, server_ip_v6, port, interface_name, version, http, tls, socks, created_time, updated_time, status, tcp_listen_addr, udp_listen_addr, inx)
@@ -363,10 +327,7 @@ func TestForwardBatchChangeTunnelRollbackOnSyncFailure(t *testing.T) {
 	`, now, now).Error; err != nil {
 		t.Fatalf("insert node A: %v", err)
 	}
-	var nodeA int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&nodeA); err != nil {
-		t.Fatal(err)
-	}
+	nodeA := mustLastInsertID(t, repo, "batch-switch-node-a")
 
 	if err := repo.DB().Exec(`
 		INSERT INTO node(name, secret, server_ip, server_ip_v4, server_ip_v6, port, interface_name, version, http, tls, socks, created_time, updated_time, status, tcp_listen_addr, udp_listen_addr, inx)
@@ -374,10 +335,7 @@ func TestForwardBatchChangeTunnelRollbackOnSyncFailure(t *testing.T) {
 	`, now, now).Error; err != nil {
 		t.Fatalf("insert node B: %v", err)
 	}
-	var nodeB int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&nodeB); err != nil {
-		t.Fatal(err)
-	}
+	nodeB := mustLastInsertID(t, repo, "batch-switch-node-b")
 
 	if err := repo.DB().Exec(`INSERT INTO chain_tunnel(tunnel_id, chain_type, node_id, port, strategy, inx, protocol) VALUES(?, 1, ?, 23001, 'round', 1, 'tls')`, tunnelA, nodeA).Error; err != nil {
 		t.Fatalf("insert chain_tunnel A: %v", err)
@@ -399,10 +357,7 @@ func TestForwardBatchChangeTunnelRollbackOnSyncFailure(t *testing.T) {
 	`, tunnelA, now, now).Error; err != nil {
 		t.Fatalf("insert forward: %v", err)
 	}
-	var forwardID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&forwardID); err != nil {
-		t.Fatal(err)
-	}
+	forwardID := mustLastInsertID(t, repo, "batch-switch-forward")
 
 	if err := repo.DB().Exec(`INSERT INTO forward_port(forward_id, node_id, port) VALUES(?, ?, ?)`, forwardID, nodeA, 23001).Error; err != nil {
 		t.Fatalf("insert forward_port: %v", err)
@@ -432,19 +387,12 @@ func TestForwardBatchChangeTunnelRollbackOnSyncFailure(t *testing.T) {
 		t.Fatalf("expected failCount=1, got %v", result["failCount"])
 	}
 
-	var tunnelAfter int64
-	if err := repo.DB().Raw(`SELECT tunnel_id FROM forward WHERE id = ?`, forwardID).Row().Scan(&tunnelAfter); err != nil {
-		t.Fatalf("query forward tunnel_id: %v", err)
-	}
+	tunnelAfter := mustQueryInt64(t, repo, `SELECT tunnel_id FROM forward WHERE id = ?`, forwardID)
 	if tunnelAfter != tunnelA {
 		t.Fatalf("expected tunnel rollback to %d, got %d", tunnelA, tunnelAfter)
 	}
 
-	var nodeAfter int64
-	var portAfter int
-	if err := repo.DB().Raw(`SELECT node_id, port FROM forward_port WHERE forward_id = ? LIMIT 1`, forwardID).Row().Scan(&nodeAfter, &portAfter); err != nil {
-		t.Fatalf("query forward_port: %v", err)
-	}
+	nodeAfter, portAfter := mustQueryInt64Int(t, repo, `SELECT node_id, port FROM forward_port WHERE forward_id = ? LIMIT 1`, forwardID)
 	if nodeAfter != nodeA || portAfter != 23001 {
 		t.Fatalf("expected forward_port rollback to node=%d port=23001, got node=%d port=%d", nodeA, nodeAfter, portAfter)
 	}
@@ -473,10 +421,7 @@ func TestUserTunnelReassignmentKeepsStableID(t *testing.T) {
 	`, now, now).Error; err != nil {
 		t.Fatalf("insert tunnel: %v", err)
 	}
-	var tunnelID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-		t.Fatal(err)
-	}
+	tunnelID := mustLastInsertID(t, repo, "stable-tunnel")
 
 	// 1. Assign permission (creates new user_tunnel)
 	// userTunnelBatchAssign expects structure: {userId: 123, tunnels: [{tunnelId: 456, ...}]}
@@ -495,10 +440,7 @@ func TestUserTunnelReassignmentKeepsStableID(t *testing.T) {
 		t.Fatalf("expected code 0, got %d msg=%q", out.Code, out.Msg)
 	}
 
-	var initialID int64
-	if err := repo.DB().Raw(`SELECT id FROM user_tunnel WHERE user_id = 100 AND tunnel_id = ?`, tunnelID).Row().Scan(&initialID); err != nil {
-		t.Fatalf("query initial user_tunnel id: %v", err)
-	}
+	initialID := mustQueryInt64(t, repo, `SELECT id FROM user_tunnel WHERE user_id = 100 AND tunnel_id = ?`, tunnelID)
 
 	// 2. Re-assign permission (should UPDATE, not INSERT)
 	reassignPayload := `{"userId":100,"tunnels":[{"tunnelId":` + jsonNumber(tunnelID) + `}]}`
@@ -517,18 +459,12 @@ func TestUserTunnelReassignmentKeepsStableID(t *testing.T) {
 	}
 
 	// 3. Verify stable ID and no duplicates
-	var count int
-	if err := repo.DB().Raw(`SELECT COUNT(1) FROM user_tunnel WHERE user_id = 100 AND tunnel_id = ?`, tunnelID).Row().Scan(&count); err != nil {
-		t.Fatalf("query count: %v", err)
-	}
+	count := mustQueryInt(t, repo, `SELECT COUNT(1) FROM user_tunnel WHERE user_id = 100 AND tunnel_id = ?`, tunnelID)
 	if count != 1 {
 		t.Fatalf("expected exactly 1 user_tunnel record, got %d", count)
 	}
 
-	var currentID int64
-	if err := repo.DB().Raw(`SELECT id FROM user_tunnel WHERE user_id = 100 AND tunnel_id = ?`, tunnelID).Row().Scan(&currentID); err != nil {
-		t.Fatalf("query current user_tunnel: %v", err)
-	}
+	currentID := mustQueryInt64(t, repo, `SELECT id FROM user_tunnel WHERE user_id = 100 AND tunnel_id = ?`, tunnelID)
 
 	if currentID != initialID {
 		t.Fatalf("user_tunnel ID changed from %d to %d (unstable ID!)", initialID, currentID)

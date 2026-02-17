@@ -30,11 +30,7 @@ func TestTunnelCreateWithIPPreferenceContract(t *testing.T) {
 		`, name, name+"-secret", v4, v4, v6, portRange, "", "v1", 1, 1, 1, now, now, 1, "[::]", "[::]", 0).Error; err != nil {
 			t.Fatalf("insert node %s: %v", name, err)
 		}
-		var id int64
-		if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); err != nil {
-			t.Fatalf("get node id %s: %v", name, err)
-		}
-		return id
+		return mustLastInsertID(t, repo, name)
 	}
 
 	entryID := insertDualStackNode("ip-pref-entry", "10.50.0.1", "2001:db8::1", "50000-50010")
@@ -61,8 +57,7 @@ func TestTunnelCreateWithIPPreferenceContract(t *testing.T) {
 				t.Fatalf("decode response: %v", err)
 			}
 
-			var stored string
-			err := repo.DB().Raw(`SELECT COALESCE(ip_preference, '') FROM tunnel WHERE name = ?`, "tunnel-"+tc.name).Row().Scan(&stored)
+			stored, err := tryQueryString(t, repo, `SELECT COALESCE(ip_preference, '') FROM tunnel WHERE name = ?`, "tunnel-"+tc.name)
 			if err != nil {
 				if err == sql.ErrNoRows {
 					t.Skipf("tunnel not created (nodes offline), skipping DB verification")
@@ -93,11 +88,7 @@ func TestTunnelUpdateIPPreferenceContract(t *testing.T) {
 		`, name, name+"-secret", v4, v4, v6, portRange, "", "v1", 1, 1, 1, now, now, 1, "[::]", "[::]", 0).Error; err != nil {
 			t.Fatalf("insert node %s: %v", name, err)
 		}
-		var id int64
-		if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); err != nil {
-			t.Fatalf("get node id %s: %v", name, err)
-		}
-		return id
+		return mustLastInsertID(t, repo, name)
 	}
 
 	entryID := insertDualStackNode("upd-entry", "10.60.0.1", "2001:db8:1::1", "60000-60010")
@@ -109,10 +100,7 @@ func TestTunnelUpdateIPPreferenceContract(t *testing.T) {
 	`, "update-ip-pref-tunnel", 1.0, 1, "tls", 99999, now, now, 1, nil, 0, "").Error; err != nil {
 		t.Fatalf("insert tunnel: %v", err)
 	}
-	var tunnelID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-		t.Fatalf("get tunnel id: %v", err)
-	}
+	tunnelID := mustLastInsertID(t, repo, "update-ip-pref-tunnel")
 
 	payload := `{"id":` + jsonInt(tunnelID) + `,"name":"update-ip-pref-tunnel","type":2,"flow":99999,"trafficRatio":1.0,"status":1,"ipPreference":"v6","inNodeId":[{"nodeId":` + jsonInt(entryID) + `,"protocol":"tls"}],"chainNodes":[],"outNodeId":[{"nodeId":` + jsonInt(exitID) + `,"protocol":"tls"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/tunnel/update", bytes.NewBufferString(payload))
@@ -126,10 +114,7 @@ func TestTunnelUpdateIPPreferenceContract(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 
-	var stored string
-	if err := repo.DB().Raw(`SELECT COALESCE(ip_preference, '') FROM tunnel WHERE id = ?`, tunnelID).Row().Scan(&stored); err != nil {
-		t.Fatalf("query ip_preference: %v", err)
-	}
+	stored := mustQueryString(t, repo, `SELECT COALESCE(ip_preference, '') FROM tunnel WHERE id = ?`, tunnelID)
 	if stored != "v6" {
 		t.Fatalf("expected ip_preference='v6' after update, got %q", stored)
 	}
@@ -202,10 +187,7 @@ func TestIPPreferenceColumnDefaultContract(t *testing.T) {
 		t.Fatalf("insert tunnel without ip_preference: %v", err)
 	}
 
-	var stored string
-	if err := repo.DB().Raw(`SELECT COALESCE(ip_preference, '') FROM tunnel WHERE name = ?`, "no-pref-tunnel").Row().Scan(&stored); err != nil {
-		t.Fatalf("query ip_preference: %v", err)
-	}
+	stored := mustQueryString(t, repo, `SELECT COALESCE(ip_preference, '') FROM tunnel WHERE name = ?`, "no-pref-tunnel")
 	if stored != "" {
 		t.Fatalf("expected default ip_preference='', got %q", stored)
 	}
@@ -214,11 +196,7 @@ func TestIPPreferenceColumnDefaultContract(t *testing.T) {
 func TestIPPreferenceColumnMigrationContract(t *testing.T) {
 	_, repo := setupContractRouter(t, "contract-jwt-secret")
 
-	var colCount int
-	err := repo.DB().Raw(`SELECT COUNT(*) FROM pragma_table_info('tunnel') WHERE name = 'ip_preference'`).Row().Scan(&colCount)
-	if err != nil {
-		t.Fatalf("check column existence: %v", err)
-	}
+	colCount := mustQueryInt(t, repo, `SELECT COUNT(*) FROM pragma_table_info('tunnel') WHERE name = 'ip_preference'`)
 	if colCount != 1 {
 		t.Fatalf("expected ip_preference column to exist in tunnel table, found %d", colCount)
 	}
@@ -235,10 +213,7 @@ func TestIPPreferenceCoalesceNullSafety(t *testing.T) {
 		t.Skipf("DB does not allow NULL ip_preference (NOT NULL constraint): %v", err)
 	}
 
-	var stored string
-	if err := repo.DB().Raw(`SELECT COALESCE(ip_preference, '') FROM tunnel WHERE name = ?`, "null-pref-tunnel").Row().Scan(&stored); err != nil {
-		t.Fatalf("query ip_preference: %v", err)
-	}
+	stored := mustQueryString(t, repo, `SELECT COALESCE(ip_preference, '') FROM tunnel WHERE name = ?`, "null-pref-tunnel")
 	if stored != "" {
 		t.Fatalf("COALESCE should convert NULL to empty string, got %q", stored)
 	}
@@ -255,10 +230,7 @@ func TestDualStackNodeIPFieldsStoredContract(t *testing.T) {
 		t.Fatalf("insert dual-stack node: %v", err)
 	}
 
-	var v4, v6 sql.NullString
-	if err := repo.DB().Raw(`SELECT server_ip_v4, server_ip_v6 FROM node WHERE name = ?`, "ds-verify-node").Row().Scan(&v4, &v6); err != nil {
-		t.Fatalf("query node IPs: %v", err)
-	}
+	v4, v6 := mustQueryTwoNullStrings(t, repo, `SELECT server_ip_v4, server_ip_v6 FROM node WHERE name = ?`, "ds-verify-node")
 	if !v4.Valid || v4.String != "10.70.0.1" {
 		t.Fatalf("expected server_ip_v4='10.70.0.1', got %v", v4)
 	}
@@ -283,10 +255,7 @@ func TestIPPreferenceValidValuesContract(t *testing.T) {
 			t.Fatalf("insert tunnel with ip_preference=%q: %v", pref, err)
 		}
 
-		var stored string
-		if err := repo.DB().Raw(`SELECT COALESCE(ip_preference, '') FROM tunnel WHERE name = ?`, name).Row().Scan(&stored); err != nil {
-			t.Fatalf("query ip_preference for %s: %v", name, err)
-		}
+		stored := mustQueryString(t, repo, `SELECT COALESCE(ip_preference, '') FROM tunnel WHERE name = ?`, name)
 		if stored != pref {
 			t.Fatalf("expected ip_preference=%q, got %q for %s", pref, stored, name)
 		}

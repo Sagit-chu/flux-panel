@@ -128,11 +128,7 @@ func TestPrepareTunnelCreateStateRemoteAutoPortDefersToFederation(t *testing.T) 
 		`, name, name+"-secret", "10.0.0.1", "10.0.0.1", "", portRange, "", "v1", 1, 1, 1, now, now, status, "[::]", "[::]", 0, isRemote, "http://peer", "peer-token", `{"shareId":1}`).Error; execErr != nil {
 			t.Fatalf("insert node %s: %v", name, execErr)
 		}
-		var id int64
-		if idErr := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); idErr != nil {
-			t.Fatalf("node id %s: %v", name, idErr)
-		}
-		return id
+		return mustLastInsertID(t, r, name)
 	}
 
 	entryID := insertNode("entry", 1, "31000-31010", 0)
@@ -188,11 +184,7 @@ func TestPrepareTunnelCreateStateAllowsOfflineRemoteMiddleNode(t *testing.T) {
 		`, name, name+"-secret", "10.0.0.1", "10.0.0.1", "", portRange, "", "v1", 1, 1, 1, now, now, status, "[::]", "[::]", 0, isRemote, "http://peer", "peer-token", `{"shareId":2}`).Error; execErr != nil {
 			t.Fatalf("insert node %s: %v", name, execErr)
 		}
-		var id int64
-		if idErr := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); idErr != nil {
-			t.Fatalf("node id %s: %v", name, idErr)
-		}
-		return id
+		return mustLastInsertID(t, r, name)
 	}
 
 	entryID := insertNode("entry-local", 1, "32000-32010", 0)

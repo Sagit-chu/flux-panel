@@ -31,10 +31,7 @@ func TestFederationShareCreateRejectsRemoteNode(t *testing.T) {
 	`, "remote-share-node", "remote-share-secret", "10.10.10.1", "10.10.10.1", "", "20000-20010", "", "v1", 1, 1, 1, now, now, 1, "[::]", "[::]", 0, 1, "http://peer.example", "peer-token", `{"shareId":1}`).Error; err != nil {
 		t.Fatalf("insert remote node: %v", err)
 	}
-	var remoteNodeID int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&remoteNodeID); err != nil {
-		t.Fatalf("get remote node id: %v", err)
-	}
+	remoteNodeID := mustLastInsertID(t, r, "remote-share-node")
 
 	body, err := json.Marshal(createPeerShareRequest{
 		Name:           "remote-node-share",
@@ -69,10 +66,7 @@ func TestFederationShareCreateRejectsRemoteNode(t *testing.T) {
 		t.Fatalf("expected rejection message %q, got %q", "Only local nodes can be shared", payload.Msg)
 	}
 
-	var shareCount int
-	if err := r.DB().Raw(`SELECT COUNT(1) FROM peer_share WHERE node_id = ?`, remoteNodeID).Row().Scan(&shareCount); err != nil {
-		t.Fatalf("query peer_share count: %v", err)
-	}
+	shareCount := mustQueryInt(t, r, `SELECT COUNT(1) FROM peer_share WHERE node_id = ?`, remoteNodeID)
 	if shareCount != 0 {
 		t.Fatalf("expected no share rows for remote node, got %d", shareCount)
 	}
@@ -94,10 +88,7 @@ func TestFederationShareCreateRejectsInvalidAllowedIPs(t *testing.T) {
 	`, "local-share-node", "local-share-secret", "10.20.30.40", "10.20.30.40", "", "21000-21010", "", "v1", 1, 1, 1, now, now, 1, "[::]", "[::]", 0, 0, "", "", "").Error; err != nil {
 		t.Fatalf("insert local node: %v", err)
 	}
-	var localNodeID int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&localNodeID); err != nil {
-		t.Fatalf("get local node id: %v", err)
-	}
+	localNodeID := mustLastInsertID(t, r, "local-share-node")
 
 	body, err := json.Marshal(createPeerShareRequest{
 		Name:           "local-node-share",
@@ -133,10 +124,7 @@ func TestFederationShareCreateRejectsInvalidAllowedIPs(t *testing.T) {
 		t.Fatalf("expected invalid IP message, got %q", payload.Msg)
 	}
 
-	var shareCount int
-	if err := r.DB().Raw(`SELECT COUNT(1) FROM peer_share WHERE node_id = ?`, localNodeID).Row().Scan(&shareCount); err != nil {
-		t.Fatalf("query peer_share count: %v", err)
-	}
+	shareCount := mustQueryInt(t, r, `SELECT COUNT(1) FROM peer_share WHERE node_id = ?`, localNodeID)
 	if shareCount != 0 {
 		t.Fatalf("expected no share rows for node, got %d", shareCount)
 	}
@@ -275,10 +263,7 @@ func TestFederationShareDeleteCleansUpRuntimes(t *testing.T) {
 		t.Fatalf("insert peer_share_runtime rows: %v", err)
 	}
 
-	var runtimeCount int
-	if err := r.DB().Raw(`SELECT COUNT(1) FROM peer_share_runtime WHERE share_id = ? AND status = 1`, share.ID).Row().Scan(&runtimeCount); err != nil {
-		t.Fatalf("count active runtimes before: %v", err)
-	}
+	runtimeCount := mustQueryInt(t, r, `SELECT COUNT(1) FROM peer_share_runtime WHERE share_id = ? AND status = 1`, share.ID)
 	if runtimeCount != 2 {
 		t.Fatalf("expected 2 active runtimes before delete, got %d", runtimeCount)
 	}
@@ -304,18 +289,12 @@ func TestFederationShareDeleteCleansUpRuntimes(t *testing.T) {
 		t.Fatalf("expected response code 0, got %d (%s)", payload.Code, payload.Msg)
 	}
 
-	var shareCount int
-	if err := r.DB().Raw(`SELECT COUNT(1) FROM peer_share WHERE id = ?`, share.ID).Row().Scan(&shareCount); err != nil {
-		t.Fatalf("count peer_share after: %v", err)
-	}
+	shareCount := mustQueryInt(t, r, `SELECT COUNT(1) FROM peer_share WHERE id = ?`, share.ID)
 	if shareCount != 0 {
 		t.Fatalf("expected peer_share deleted, got %d rows", shareCount)
 	}
 
-	var runtimeCountAfter int
-	if err := r.DB().Raw(`SELECT COUNT(1) FROM peer_share_runtime WHERE share_id = ?`, share.ID).Row().Scan(&runtimeCountAfter); err != nil {
-		t.Fatalf("count peer_share_runtime after: %v", err)
-	}
+	runtimeCountAfter := mustQueryInt(t, r, `SELECT COUNT(1) FROM peer_share_runtime WHERE share_id = ?`, share.ID)
 	if runtimeCountAfter != 0 {
 		t.Fatalf("expected all peer_share_runtime rows deleted, got %d", runtimeCountAfter)
 	}
@@ -451,26 +430,17 @@ func TestFederationRemoteUsageList(t *testing.T) {
 	`, "remote-consumer-node", "remote-consumer-secret", "10.30.40.50", "10.30.40.50", "", "31000-31010", "", "v1", 1, 1, 1, now, now, 1, "[::]", "[::]", 0, 1, "http://peer.example", "peer-token", `{"shareId":88,"maxBandwidth":2147483648,"currentFlow":1073741824,"portRangeStart":31000,"portRangeEnd":31010}`).Error; err != nil {
 		t.Fatalf("insert remote node: %v", err)
 	}
-	var nodeID int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&nodeID); err != nil {
-		t.Fatalf("remote node id: %v", err)
-	}
+	nodeID := mustLastInsertID(t, r, "remote-consumer-node")
 
 	if err := r.DB().Exec(`INSERT INTO tunnel(name, type, protocol, flow, created_time, updated_time, status, in_ip, inx) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`, "consumer-tunnel-a", 2, "tls", 1, now, now, 1, "", 0).Error; err != nil {
 		t.Fatalf("insert tunnel a: %v", err)
 	}
-	var tunnelAID int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelAID); err != nil {
-		t.Fatal(err)
-	}
+	tunnelAID := mustLastInsertID(t, r, "consumer-tunnel-a")
 
 	if err := r.DB().Exec(`INSERT INTO tunnel(name, type, protocol, flow, created_time, updated_time, status, in_ip, inx) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`, "consumer-tunnel-b", 2, "tls", 1, now, now, 1, "", 0).Error; err != nil {
 		t.Fatalf("insert tunnel b: %v", err)
 	}
-	var tunnelBID int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelBID); err != nil {
-		t.Fatal(err)
-	}
+	tunnelBID := mustLastInsertID(t, r, "consumer-tunnel-b")
 
 	if err := r.DB().Exec(`
 		INSERT INTO federation_tunnel_binding(tunnel_id, node_id, chain_type, hop_inx, remote_url, resource_key, remote_binding_id, allocated_port, status, created_time, updated_time)

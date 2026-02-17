@@ -33,20 +33,12 @@ func TestRunStatisticsFlowJobTracksIncrementAndPrunes(t *testing.T) {
 
 	h.runStatisticsFlowJob(now)
 
-	var staleCount int
-	if err := r.DB().Raw(`SELECT COUNT(1) FROM statistics_flow WHERE created_time < ?`, nowMs-int64((48*time.Hour)/time.Millisecond)).Row().Scan(&staleCount); err != nil {
-		t.Fatalf("query stale statistics rows: %v", err)
-	}
+	staleCount := mustQueryInt(t, r, `SELECT COUNT(1) FROM statistics_flow WHERE created_time < ?`, nowMs-int64((48*time.Hour)/time.Millisecond))
 	if staleCount != 0 {
 		t.Fatalf("expected stale statistics rows to be pruned, got %d", staleCount)
 	}
 
-	var flow int64
-	var total int64
-	var hour string
-	if err := r.DB().Raw(`SELECT flow, total_flow, time FROM statistics_flow WHERE user_id = 1 ORDER BY id DESC LIMIT 1`).Row().Scan(&flow, &total, &hour); err != nil {
-		t.Fatalf("query latest statistics row: %v", err)
-	}
+	flow, total, hour := mustQueryInt64Int64String(t, r, `SELECT flow, total_flow, time FROM statistics_flow WHERE user_id = 1 ORDER BY id DESC LIMIT 1`)
 	if flow != 50 {
 		t.Fatalf("expected increment flow 50, got %d", flow)
 	}
@@ -100,28 +92,17 @@ func TestRunResetAndExpiryJobResetsFlowAndDisablesExpiredRecords(t *testing.T) {
 
 	h.runResetAndExpiryJob(now)
 
-	var userIn, userOut int64
-	var userStatus int
-	if err := r.DB().Raw(`SELECT in_flow, out_flow, status FROM user WHERE id = 2`).Row().Scan(&userIn, &userOut, &userStatus); err != nil {
-		t.Fatalf("query user after maintenance: %v", err)
-	}
+	userIn, userOut, userStatus := mustQueryInt64Int64Int(t, r, `SELECT in_flow, out_flow, status FROM user WHERE id = 2`)
 	if userIn != 0 || userOut != 0 || userStatus != 0 {
 		t.Fatalf("expected user reset+disabled, got in=%d out=%d status=%d", userIn, userOut, userStatus)
 	}
 
-	var utIn, utOut int64
-	var utStatus int
-	if err := r.DB().Raw(`SELECT in_flow, out_flow, status FROM user_tunnel WHERE id = 10`).Row().Scan(&utIn, &utOut, &utStatus); err != nil {
-		t.Fatalf("query user_tunnel after maintenance: %v", err)
-	}
+	utIn, utOut, utStatus := mustQueryInt64Int64Int(t, r, `SELECT in_flow, out_flow, status FROM user_tunnel WHERE id = 10`)
 	if utIn != 0 || utOut != 0 || utStatus != 0 {
 		t.Fatalf("expected user_tunnel reset+disabled, got in=%d out=%d status=%d", utIn, utOut, utStatus)
 	}
 
-	var forwardStatus int
-	if err := r.DB().Raw(`SELECT status FROM forward WHERE id = 20`).Row().Scan(&forwardStatus); err != nil {
-		t.Fatalf("query forward after maintenance: %v", err)
-	}
+	forwardStatus := mustQueryInt(t, r, `SELECT status FROM forward WHERE id = 20`)
 	if forwardStatus != 0 {
 		t.Fatalf("expected forward status=0 after expiry handling, got %d", forwardStatus)
 	}

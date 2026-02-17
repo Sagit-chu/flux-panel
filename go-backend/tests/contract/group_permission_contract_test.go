@@ -28,26 +28,17 @@ func TestGroupUserUnbindRevokesInheritedTunnelPermission(t *testing.T) {
 	`, now, now).Error; err != nil {
 		t.Fatalf("insert tunnel: %v", err)
 	}
-	var tunnelID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-		t.Fatalf("read tunnel id: %v", err)
-	}
+	tunnelID := mustLastInsertID(t, repo, "group-contract-tunnel")
 
 	if err := repo.DB().Exec(`INSERT INTO user_group(name, created_time, updated_time, status) VALUES('ug-contract', ?, ?, 1)`, now, now).Error; err != nil {
 		t.Fatalf("insert user_group: %v", err)
 	}
-	var userGroupID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&userGroupID); err != nil {
-		t.Fatalf("read user_group id: %v", err)
-	}
+	userGroupID := mustLastInsertID(t, repo, "ug-contract")
 
 	if err := repo.DB().Exec(`INSERT INTO tunnel_group(name, created_time, updated_time, status) VALUES('tg-contract', ?, ?, 1)`, now, now).Error; err != nil {
 		t.Fatalf("insert tunnel_group: %v", err)
 	}
-	var tunnelGroupID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelGroupID); err != nil {
-		t.Fatalf("read tunnel_group id: %v", err)
-	}
+	tunnelGroupID := mustLastInsertID(t, repo, "tg-contract")
 
 	if err := repo.DB().Exec(`INSERT INTO tunnel_group_tunnel(tunnel_group_id, tunnel_id, created_time) VALUES(?, ?, ?)`, tunnelGroupID, tunnelID, now).Error; err != nil {
 		t.Fatalf("insert tunnel_group_tunnel: %v", err)
@@ -67,15 +58,9 @@ func TestGroupUserUnbindRevokesInheritedTunnelPermission(t *testing.T) {
 	router.ServeHTTP(bindRes, bindReq)
 	assertCode(t, bindRes, 0)
 
-	var userTunnelID int64
-	if err := repo.DB().Raw(`SELECT id FROM user_tunnel WHERE user_id = 200 AND tunnel_id = ?`, tunnelID).Row().Scan(&userTunnelID); err != nil {
-		t.Fatalf("query user_tunnel after bind: %v", err)
-	}
+	userTunnelID := mustQueryInt64(t, repo, `SELECT id FROM user_tunnel WHERE user_id = 200 AND tunnel_id = ?`, tunnelID)
 
-	var grantCount int
-	if err := repo.DB().Raw(`SELECT COUNT(1) FROM group_permission_grant WHERE user_tunnel_id = ?`, userTunnelID).Row().Scan(&grantCount); err != nil {
-		t.Fatalf("query group_permission_grant after bind: %v", err)
-	}
+	grantCount := mustQueryInt(t, repo, `SELECT COUNT(1) FROM group_permission_grant WHERE user_tunnel_id = ?`, userTunnelID)
 	if grantCount == 0 {
 		t.Fatalf("expected non-zero grants after bind")
 	}
@@ -86,17 +71,12 @@ func TestGroupUserUnbindRevokesInheritedTunnelPermission(t *testing.T) {
 	router.ServeHTTP(unbindRes, unbindReq)
 	assertCode(t, unbindRes, 0)
 
-	if err := repo.DB().Raw(`SELECT COUNT(1) FROM group_permission_grant WHERE user_tunnel_id = ?`, userTunnelID).Row().Scan(&grantCount); err != nil {
-		t.Fatalf("query group_permission_grant after unbind: %v", err)
-	}
+	grantCount = mustQueryInt(t, repo, `SELECT COUNT(1) FROM group_permission_grant WHERE user_tunnel_id = ?`, userTunnelID)
 	if grantCount != 0 {
 		t.Fatalf("expected grants revoked after unbind, got %d", grantCount)
 	}
 
-	var userTunnelCount int
-	if err := repo.DB().Raw(`SELECT COUNT(1) FROM user_tunnel WHERE id = ?`, userTunnelID).Row().Scan(&userTunnelCount); err != nil {
-		t.Fatalf("query user_tunnel after unbind: %v", err)
-	}
+	userTunnelCount := mustQueryInt(t, repo, `SELECT COUNT(1) FROM user_tunnel WHERE id = ?`, userTunnelID)
 	if userTunnelCount != 0 {
 		t.Fatalf("expected user_tunnel revoked after unbind, got %d", userTunnelCount)
 	}
@@ -120,26 +100,17 @@ func TestGroupPermissionRemoveRevokesInheritedTunnelPermission(t *testing.T) {
 	`, now, now).Error; err != nil {
 		t.Fatalf("insert tunnel: %v", err)
 	}
-	var tunnelID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-		t.Fatalf("read tunnel id: %v", err)
-	}
+	tunnelID := mustLastInsertID(t, repo, "group-remove-tunnel")
 
 	if err := repo.DB().Exec(`INSERT INTO user_group(name, created_time, updated_time, status) VALUES('ug-remove-contract', ?, ?, 1)`, now, now).Error; err != nil {
 		t.Fatalf("insert user_group: %v", err)
 	}
-	var userGroupID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&userGroupID); err != nil {
-		t.Fatalf("read user_group id: %v", err)
-	}
+	userGroupID := mustLastInsertID(t, repo, "ug-remove-contract")
 
 	if err := repo.DB().Exec(`INSERT INTO tunnel_group(name, created_time, updated_time, status) VALUES('tg-remove-contract', ?, ?, 1)`, now, now).Error; err != nil {
 		t.Fatalf("insert tunnel_group: %v", err)
 	}
-	var tunnelGroupID int64
-	if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelGroupID); err != nil {
-		t.Fatalf("read tunnel_group id: %v", err)
-	}
+	tunnelGroupID := mustLastInsertID(t, repo, "tg-remove-contract")
 
 	adminToken, err := auth.GenerateToken(1, "admin_user", 0, secret)
 	if err != nil {
@@ -164,20 +135,11 @@ func TestGroupPermissionRemoveRevokesInheritedTunnelPermission(t *testing.T) {
 	router.ServeHTTP(assignPermissionRes, assignPermissionReq)
 	assertCode(t, assignPermissionRes, 0)
 
-	var permissionID int64
-	if err := repo.DB().Raw(`SELECT id FROM group_permission WHERE user_group_id = ? AND tunnel_group_id = ?`, userGroupID, tunnelGroupID).Row().Scan(&permissionID); err != nil {
-		t.Fatalf("query group_permission id: %v", err)
-	}
+	permissionID := mustQueryInt64(t, repo, `SELECT id FROM group_permission WHERE user_group_id = ? AND tunnel_group_id = ?`, userGroupID, tunnelGroupID)
 
-	var userTunnelID int64
-	if err := repo.DB().Raw(`SELECT id FROM user_tunnel WHERE user_id = 201 AND tunnel_id = ?`, tunnelID).Row().Scan(&userTunnelID); err != nil {
-		t.Fatalf("query user_tunnel after assign: %v", err)
-	}
+	userTunnelID := mustQueryInt64(t, repo, `SELECT id FROM user_tunnel WHERE user_id = 201 AND tunnel_id = ?`, tunnelID)
 
-	var grantCount int
-	if err := repo.DB().Raw(`SELECT COUNT(1) FROM group_permission_grant WHERE user_tunnel_id = ?`, userTunnelID).Row().Scan(&grantCount); err != nil {
-		t.Fatalf("query group_permission_grant after assign: %v", err)
-	}
+	grantCount := mustQueryInt(t, repo, `SELECT COUNT(1) FROM group_permission_grant WHERE user_tunnel_id = ?`, userTunnelID)
 	if grantCount == 0 {
 		t.Fatalf("expected non-zero grants after permission assign")
 	}
@@ -188,25 +150,17 @@ func TestGroupPermissionRemoveRevokesInheritedTunnelPermission(t *testing.T) {
 	router.ServeHTTP(removeRes, removeReq)
 	assertCode(t, removeRes, 0)
 
-	var permissionCount int
-	if err := repo.DB().Raw(`SELECT COUNT(1) FROM group_permission WHERE id = ?`, permissionID).Row().Scan(&permissionCount); err != nil {
-		t.Fatalf("query group_permission after remove: %v", err)
-	}
+	permissionCount := mustQueryInt(t, repo, `SELECT COUNT(1) FROM group_permission WHERE id = ?`, permissionID)
 	if permissionCount != 0 {
 		t.Fatalf("expected group_permission removed, got %d", permissionCount)
 	}
 
-	if err := repo.DB().Raw(`SELECT COUNT(1) FROM group_permission_grant WHERE user_tunnel_id = ?`, userTunnelID).Row().Scan(&grantCount); err != nil {
-		t.Fatalf("query group_permission_grant after remove: %v", err)
-	}
+	grantCount = mustQueryInt(t, repo, `SELECT COUNT(1) FROM group_permission_grant WHERE user_tunnel_id = ?`, userTunnelID)
 	if grantCount != 0 {
 		t.Fatalf("expected grants removed after permission remove, got %d", grantCount)
 	}
 
-	var userTunnelCount int
-	if err := repo.DB().Raw(`SELECT COUNT(1) FROM user_tunnel WHERE id = ?`, userTunnelID).Row().Scan(&userTunnelCount); err != nil {
-		t.Fatalf("query user_tunnel after permission remove: %v", err)
-	}
+	userTunnelCount := mustQueryInt(t, repo, `SELECT COUNT(1) FROM user_tunnel WHERE id = ?`, userTunnelID)
 	if userTunnelCount != 0 {
 		t.Fatalf("expected user_tunnel revoked after permission remove, got %d", userTunnelCount)
 	}

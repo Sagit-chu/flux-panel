@@ -30,11 +30,7 @@ func TestUserTunnelVisibleListContracts(t *testing.T) {
 		`, name, 1.0, 1, "tls", 99999, now, now, status, nil, inx).Error; err != nil {
 			t.Fatalf("insert tunnel %s: %v", name, err)
 		}
-		var id int64
-		if err := repo.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); err != nil {
-			t.Fatalf("get tunnel id %s: %v", name, err)
-		}
-		return id
+		return mustLastInsertID(t, repo, name)
 	}
 
 	enabledA := insertTunnel("enabled-A", 1, 1)

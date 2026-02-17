@@ -94,10 +94,7 @@ func TestOpenAPISubStoreContracts(t *testing.T) {
 		"contract-tunnel", 1.0, 1, "tls", 1, now, now, 1, nil, 0).Error; err != nil {
 		t.Fatalf("insert tunnel: %v", err)
 	}
-	var tunnelID int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-		t.Fatalf("last insert id: %v", err)
-	}
+	tunnelID := mustLastInsertID(t, r, "contract-tunnel")
 	if err := r.DB().Exec(`INSERT INTO user_tunnel(user_id, tunnel_id, speed_id, num, flow, in_flow, out_flow, flow_reset_time, exp_time, status) VALUES(?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
 		1, tunnelID, 99999, tunnelFlowGB, tunnelInFlow, tunnelOutFlow, 1, tunnelExpTimeMs, 1).Error; err != nil {
 		t.Fatalf("insert user_tunnel: %v", err)
@@ -317,10 +314,7 @@ func TestBackupExportImportRestoreContracts(t *testing.T) {
 		`, "backup-forward-tunnel", 1.0, 1, "tls", 0, now, now, 1, "", 88).Error; err != nil {
 			t.Fatalf("seed tunnel for forward backup: %v", err)
 		}
-		var tunnelID int64
-		if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-			t.Fatalf("read tunnel id for forward backup: %v", err)
-		}
+		tunnelID := mustLastInsertID(t, r, "backup-forward-tunnel")
 
 		if err := r.DB().Exec(`
 			INSERT INTO forward(user_id, user_name, name, tunnel_id, remote_addr, strategy, in_flow, out_flow, created_time, updated_time, status, inx)
@@ -328,10 +322,7 @@ func TestBackupExportImportRestoreContracts(t *testing.T) {
 		`, 1, "admin_user", "backup-forward", tunnelID, "127.0.0.1:9000", "fifo", 0, 0, now, now, 1, 88).Error; err != nil {
 			t.Fatalf("seed forward for backup: %v", err)
 		}
-		var forwardID int64
-		if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&forwardID); err != nil {
-			t.Fatalf("read forward id for backup: %v", err)
-		}
+		forwardID := mustLastInsertID(t, r, "backup-forward")
 
 		expected := map[int64]int{
 			2001: 21001,
@@ -442,24 +433,7 @@ func TestBackupExportImportRestoreContracts(t *testing.T) {
 			t.Fatalf("expected forwards import code 0, got %d (%s)", out.Code, out.Msg)
 		}
 
-		rows, err := r.DB().Raw(`SELECT node_id, port FROM forward_port WHERE forward_id = ? ORDER BY id ASC`, forwardID).Rows()
-		if err != nil {
-			t.Fatalf("query forward ports after import: %v", err)
-		}
-		defer rows.Close()
-
-		after := make(map[int64]int)
-		for rows.Next() {
-			var nodeID int64
-			var port int
-			if err := rows.Scan(&nodeID, &port); err != nil {
-				t.Fatalf("scan forward_port row: %v", err)
-			}
-			after[nodeID] = port
-		}
-		if err := rows.Err(); err != nil {
-			t.Fatalf("iterate forward_port rows: %v", err)
-		}
+		after := mustQueryNodePorts(t, r, `SELECT node_id, port FROM forward_port WHERE forward_id = ? ORDER BY id ASC`, forwardID)
 
 		if len(after) != len(expected) {
 			t.Fatalf("expected %d forward ports after import, got %d (%v)", len(expected), len(after), after)
@@ -479,10 +453,7 @@ func TestBackupExportImportRestoreContracts(t *testing.T) {
 		`, "legacy-null-chain", 1.0, 1, "tls", 1000, now, now, 1, nil, 1).Error; err != nil {
 			t.Fatalf("seed tunnel for nullable chain export: %v", err)
 		}
-		var tunnelID int64
-		if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-			t.Fatalf("read tunnel id for nullable chain export: %v", err)
-		}
+		tunnelID := mustLastInsertID(t, r, "legacy-null-chain")
 
 		if err := r.DB().Exec(`
 			INSERT INTO chain_tunnel(tunnel_id, chain_type, node_id, port, strategy, inx, protocol)
@@ -696,24 +667,18 @@ func TestOpenMigratesLegacyNodeDualStackColumns(t *testing.T) {
 func readTableColumns(t *testing.T, db *gorm.DB, table string) map[string]bool {
 	t.Helper()
 
-	rows, err := db.Raw("PRAGMA table_info(" + table + ")").Rows()
+	columnTypes, err := db.Migrator().ColumnTypes(table)
 	if err != nil {
 		t.Fatalf("inspect %s columns: %v", table, err)
 	}
-	defer rows.Close()
 
 	columns := map[string]bool{}
-	for rows.Next() {
-		var cid, notNull, pk int
-		var name, typ string
-		var defaultValue sql.NullString
-		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
-			t.Fatalf("scan %s pragma row: %v", table, err)
+	for _, col := range columnTypes {
+		name := strings.TrimSpace(col.Name())
+		if name == "" {
+			continue
 		}
 		columns[name] = true
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("iterate %s pragma rows: %v", table, err)
 	}
 
 	return columns

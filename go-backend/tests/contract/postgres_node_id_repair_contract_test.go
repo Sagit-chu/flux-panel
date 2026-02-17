@@ -64,17 +64,14 @@ func TestPostgresNodeCreateRepairsMissingIDDefaultContract(t *testing.T) {
 		_ = r.Close()
 	})
 
-	var columnDefault sql.NullString
-	if err := r.DB().Raw(`
+	columnDefault := mustQueryNullString(t, r, `
 		SELECT column_default
 		FROM information_schema.columns
 		WHERE table_schema = current_schema()
 		  AND table_name = 'node'
 		  AND column_name = 'id'
 		LIMIT 1
-	`).Row().Scan(&columnDefault); err != nil {
-		t.Fatalf("query node.id default: %v", err)
-	}
+	`)
 	if !columnDefault.Valid || !strings.Contains(strings.ToLower(columnDefault.String), "nextval(") {
 		t.Fatalf("expected node.id default to be nextval(...), got %q", columnDefault.String)
 	}
@@ -94,10 +91,7 @@ func TestPostgresNodeCreateRepairsMissingIDDefaultContract(t *testing.T) {
 	router.ServeHTTP(resp, req)
 	assertCode(t, resp, 0)
 
-	var nodeID int64
-	if err := r.DB().Raw(`SELECT id FROM node WHERE name = ? ORDER BY id DESC LIMIT 1`, "pg-repair-node").Row().Scan(&nodeID); err != nil {
-		t.Fatalf("query created node: %v", err)
-	}
+	nodeID := mustQueryInt64(t, r, `SELECT id FROM node WHERE name = ? ORDER BY id DESC LIMIT 1`, "pg-repair-node")
 	if nodeID <= 0 {
 		t.Fatalf("expected positive node id, got %d", nodeID)
 	}

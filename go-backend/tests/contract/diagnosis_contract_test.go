@@ -37,10 +37,7 @@ func TestDiagnosisChainCoverageContracts(t *testing.T) {
 	`, "diagnose-chain-tunnel", 1.0, 2, "tls", 99999, now, now, 1, nil, 0).Error; err != nil {
 		t.Fatalf("insert tunnel: %v", err)
 	}
-	var tunnelID int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-		t.Fatalf("get tunnel id: %v", err)
-	}
+	tunnelID := mustLastInsertID(t, r, "diagnose-chain-tunnel")
 
 	insertNode := func(name, ip string) int64 {
 		if err := r.DB().Exec(`
@@ -49,11 +46,7 @@ func TestDiagnosisChainCoverageContracts(t *testing.T) {
 		`, name, name+"-secret", ip, ip, "", "30000-30010", "", "v1", 1, 1, 1, now, now, 1, "[::]", "[::]", 0).Error; err != nil {
 			t.Fatalf("insert node %s: %v", name, err)
 		}
-		var id int64
-		if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); err != nil {
-			t.Fatalf("get node id %s: %v", name, err)
-		}
-		return id
+		return mustLastInsertID(t, r, name)
 	}
 
 	entryNodeID := insertNode("entry-node", "10.0.1.10")
@@ -85,10 +78,7 @@ func TestDiagnosisChainCoverageContracts(t *testing.T) {
 	`, 2, "normal_user", "chain-forward", tunnelID, "8.8.8.8:53", "fifo", now, now, 0).Error; err != nil {
 		t.Fatalf("insert forward: %v", err)
 	}
-	var forwardID int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&forwardID); err != nil {
-		t.Fatalf("get forward id: %v", err)
-	}
+	forwardID := mustLastInsertID(t, r, "chain-forward")
 
 	userToken, err := auth.GenerateToken(2, "normal_user", 1, secret)
 	if err != nil {
@@ -259,11 +249,7 @@ func TestDiagnosisUsesFederationRuntimeForRemoteNodes(t *testing.T) {
 		`, name, name+"-secret", ip, ip, "", "30000-30010", "", "v1", 1, 1, 1, now, now, 1, "[::]", "[::]", 0).Error; err != nil {
 			t.Fatalf("insert local node %s: %v", name, err)
 		}
-		var id int64
-		if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); err != nil {
-			t.Fatalf("get local node id %s: %v", name, err)
-		}
-		return id
+		return mustLastInsertID(t, r, name)
 	}
 
 	insertRemoteNode := func(name, ip string) int64 {
@@ -273,11 +259,7 @@ func TestDiagnosisUsesFederationRuntimeForRemoteNodes(t *testing.T) {
 		`, name, name+"-secret", ip, "", "", "31000-31010", "", "", now, now, "[::]", "[::]", 1, remoteServer.URL, remoteToken, `{"shareId": 123}`).Error; err != nil {
 			t.Fatalf("insert remote node %s: %v", name, err)
 		}
-		var id int64
-		if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&id); err != nil {
-			t.Fatalf("get remote node id %s: %v", name, err)
-		}
-		return id
+		return mustLastInsertID(t, r, name)
 	}
 
 	entryNodeID := insertLocalNode("entry-local", "10.50.0.10")
@@ -290,10 +272,7 @@ func TestDiagnosisUsesFederationRuntimeForRemoteNodes(t *testing.T) {
 	`, "diagnose-remote-tunnel", 1.0, 2, "tls", 99999, now, now, 1, nil, 0).Error; err != nil {
 		t.Fatalf("insert tunnel: %v", err)
 	}
-	var tunnelID int64
-	if err := r.DB().Raw("SELECT last_insert_rowid()").Row().Scan(&tunnelID); err != nil {
-		t.Fatalf("get tunnel id: %v", err)
-	}
+	tunnelID := mustLastInsertID(t, r, "diagnose-remote-tunnel")
 
 	if err := r.DB().Exec(`
 		INSERT INTO chain_tunnel(tunnel_id, chain_type, node_id, port, strategy, inx, protocol)
