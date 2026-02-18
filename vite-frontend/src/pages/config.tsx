@@ -9,6 +9,13 @@ import { Divider } from "@heroui/divider";
 import { Switch } from "@heroui/switch";
 import { Select, SelectItem } from "@heroui/select";
 import { Checkbox } from "@heroui/checkbox";
+import {
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@heroui/modal";
 import toast from "react-hot-toast";
 
 import { updateConfigs, exportBackup, importBackup, getAnnouncement, updateAnnouncement, type AnnouncementData } from "@/api";
@@ -157,6 +164,8 @@ export default function ConfigPage() {
   const [importTypes, setImportTypes] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [exportSelectorOpen, setExportSelectorOpen] = useState(false);
+  const [importSelectorOpen, setImportSelectorOpen] = useState(false);
   const [importFileName, setImportFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -402,11 +411,23 @@ export default function ConfigPage() {
     try {
       await exportBackup(exportTypes);
       toast.success("导出成功");
+      setExportSelectorOpen(false);
     } catch {
       toast.error("导出失败，请重试");
     } finally {
       setExporting(false);
     }
+  };
+
+  const triggerImportFilePicker = () => {
+    if (importTypes.length === 0) {
+      toast.error("请先选择要导入的数据类型");
+
+      return;
+    }
+
+    setImportSelectorOpen(false);
+    requestAnimationFrame(() => fileInputRef.current?.click());
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -505,12 +526,6 @@ export default function ConfigPage() {
                 }`}
                 type="button"
                 onClick={() => toggleTypeSelection(option.value, setTypes)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    toggleTypeSelection(option.value, setTypes);
-                  }
-                }}
               >
                 <div className="flex items-center gap-3">
                   <Checkbox
@@ -720,16 +735,17 @@ export default function ConfigPage() {
             <p className="text-sm text-gray-600 dark:text-gray-400">
               选择要导出的数据类型，导出为 JSON 格式文件
             </p>
-
-            {renderTypeSelection("选择导出内容", exportTypes, setExportTypes)}
+            <p className="text-xs text-default-500">
+              当前已选 {exportTypes.length} / {BACKUP_TYPE_VALUES.length}
+            </p>
 
             <div className="flex gap-3">
               <Button
                 color="primary"
                 isLoading={exporting}
-                onPress={handleExport}
+                onPress={() => setExportSelectorOpen(true)}
               >
-                {exporting ? "导出中..." : "导出数据"}
+                {exporting ? "导出中..." : "选择并导出"}
               </Button>
             </div>
           </div>
@@ -742,8 +758,9 @@ export default function ConfigPage() {
             <p className="text-sm text-gray-600 dark:text-gray-400">
               选择要导入的数据类型，支持从备份文件恢复数据
             </p>
-
-            {renderTypeSelection("选择导入内容", importTypes, setImportTypes)}
+            <p className="text-xs text-default-500">
+              当前已选 {importTypes.length} / {BACKUP_TYPE_VALUES.length}
+            </p>
 
             <input
               ref={fileInputRef}
@@ -758,9 +775,9 @@ export default function ConfigPage() {
                 color="primary"
                 isLoading={importing}
                 variant="flat"
-                onPress={() => fileInputRef.current?.click()}
+                onPress={() => setImportSelectorOpen(true)}
               >
-                {importing ? "导入中..." : "选择文件导入"}
+                {importing ? "导入中..." : "选择并导入"}
               </Button>
               {importFileName && (
                 <span className="self-center text-sm text-gray-600 dark:text-gray-400">
@@ -771,6 +788,52 @@ export default function ConfigPage() {
           </div>
         </CardBody>
       </Card>
+
+      <Modal isOpen={exportSelectorOpen} onOpenChange={setExportSelectorOpen}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader>选择导出内容</ModalHeader>
+              <ModalBody>
+                {renderTypeSelection("导出内容", exportTypes, setExportTypes)}
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose}>
+                  取消
+                </Button>
+                <Button color="primary" isLoading={exporting} onPress={handleExport}>
+                  {exporting ? "导出中..." : "确认导出"}
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={importSelectorOpen} onOpenChange={setImportSelectorOpen}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader>选择导入内容</ModalHeader>
+              <ModalBody>
+                {renderTypeSelection("导入内容", importTypes, setImportTypes)}
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose}>
+                  取消
+                </Button>
+                <Button
+                  color="primary"
+                  isDisabled={importTypes.length === 0}
+                  onPress={triggerImportFilePicker}
+                >
+                  下一步选择文件
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </div>
   );
 }
