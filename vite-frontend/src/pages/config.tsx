@@ -8,7 +8,7 @@ import { Spinner } from "@heroui/spinner";
 import { Divider } from "@heroui/divider";
 import { Switch } from "@heroui/switch";
 import { Select, SelectItem } from "@heroui/select";
-import { Checkbox, CheckboxGroup } from "@heroui/checkbox";
+import { Checkbox } from "@heroui/checkbox";
 import toast from "react-hot-toast";
 
 import { updateConfigs, exportBackup, importBackup, getAnnouncement, updateAnnouncement, type AnnouncementData } from "@/api";
@@ -97,6 +97,21 @@ const CONFIG_ITEMS: ConfigItem[] = [
     dependsValue: "true",
   },
 ];
+
+const BACKUP_TYPE_OPTIONS = [
+  { value: "users", label: "用户" },
+  { value: "nodes", label: "节点" },
+  { value: "tunnels", label: "隧道" },
+  { value: "forwards", label: "转发" },
+  { value: "userTunnels", label: "用户隧道权限" },
+  { value: "speedLimits", label: "限速规则" },
+  { value: "tunnelGroups", label: "隧道分组" },
+  { value: "userGroups", label: "用户分组" },
+  { value: "permissions", label: "分组权限" },
+  { value: "configs", label: "系统配置" },
+] as const;
+
+const BACKUP_TYPE_VALUES = BACKUP_TYPE_OPTIONS.map((option) => option.value);
 
 // 初始化时从缓存读取配置，避免闪烁
 const getInitialConfigs = (): Record<string, string> => {
@@ -434,6 +449,96 @@ export default function ConfigPage() {
     }
   };
 
+  const toggleTypeSelection = (
+    type: string,
+    setTypes: React.Dispatch<React.SetStateAction<string[]>>,
+  ) => {
+    setTypes((prev) =>
+      prev.includes(type)
+        ? prev.filter((item) => item !== type)
+        : [...prev, type],
+    );
+  };
+
+  const isAllTypesSelected = (types: string[]) =>
+    BACKUP_TYPE_VALUES.every((type) => types.includes(type));
+
+  const renderTypeSelection = (
+    label: string,
+    selectedTypes: string[],
+    setTypes: React.Dispatch<React.SetStateAction<string[]>>,
+  ) => {
+    const allSelected = isAllTypesSelected(selectedTypes);
+
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-medium text-default-700 dark:text-default-300">
+            {label}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="flat"
+              onPress={() => setTypes(allSelected ? [] : [...BACKUP_TYPE_VALUES])}
+            >
+              {allSelected ? "取消全选" : "全选"}
+            </Button>
+            <Button size="sm" variant="light" onPress={() => setTypes([])}>
+              清空
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {BACKUP_TYPE_OPTIONS.map((option) => {
+            const isSelected = selectedTypes.includes(option.value);
+
+            return (
+              <button
+                key={option.value}
+                aria-pressed={isSelected}
+                className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 cursor-pointer text-left ${
+                  isSelected
+                    ? "bg-primary-50 dark:bg-primary-900/20 border-primary-300 dark:border-primary-500/50 shadow-sm"
+                    : "bg-white dark:bg-default-50 border-default-200 dark:border-default-100/30 hover:border-primary-200 dark:hover:border-primary-500/30 hover:shadow-sm"
+                }`}
+                type="button"
+                onClick={() => toggleTypeSelection(option.value, setTypes)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    toggleTypeSelection(option.value, setTypes);
+                  }
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    classNames={{
+                      base: "pointer-events-none",
+                    }}
+                    color="primary"
+                    isSelected={isSelected}
+                    size="md"
+                  />
+                  <span
+                    className={`font-medium ${
+                      isSelected
+                        ? "text-default-900 dark:text-default-100"
+                        : "text-default-700 dark:text-default-500"
+                    }`}
+                  >
+                    {option.label}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -616,26 +721,7 @@ export default function ConfigPage() {
               选择要导出的数据类型，导出为 JSON 格式文件
             </p>
 
-            <CheckboxGroup
-              classNames={{
-                wrapper: "gap-4",
-              }}
-              label="选择导出内容"
-              orientation="horizontal"
-              value={exportTypes}
-              onValueChange={(values) => setExportTypes(values as string[])}
-            >
-              <Checkbox value="users">用户</Checkbox>
-              <Checkbox value="nodes">节点</Checkbox>
-              <Checkbox value="tunnels">隧道</Checkbox>
-              <Checkbox value="forwards">转发</Checkbox>
-              <Checkbox value="userTunnels">用户隧道权限</Checkbox>
-              <Checkbox value="speedLimits">限速规则</Checkbox>
-              <Checkbox value="tunnelGroups">隧道分组</Checkbox>
-              <Checkbox value="userGroups">用户分组</Checkbox>
-              <Checkbox value="permissions">分组权限</Checkbox>
-              <Checkbox value="configs">系统配置</Checkbox>
-            </CheckboxGroup>
+            {renderTypeSelection("选择导出内容", exportTypes, setExportTypes)}
 
             <div className="flex gap-3">
               <Button
@@ -644,28 +730,6 @@ export default function ConfigPage() {
                 onPress={handleExport}
               >
                 {exporting ? "导出中..." : "导出数据"}
-              </Button>
-              <Button
-                variant="bordered"
-                onPress={() => {
-                  setExportTypes([
-                    "users",
-                    "nodes",
-                    "tunnels",
-                    "forwards",
-                    "userTunnels",
-                    "speedLimits",
-                    "tunnelGroups",
-                    "userGroups",
-                    "permissions",
-                    "configs",
-                  ]);
-                }}
-              >
-                全选
-              </Button>
-              <Button variant="flat" onPress={() => setExportTypes([])}>
-                清空
               </Button>
             </div>
           </div>
@@ -679,26 +743,7 @@ export default function ConfigPage() {
               选择要导入的数据类型，支持从备份文件恢复数据
             </p>
 
-            <CheckboxGroup
-              classNames={{
-                wrapper: "gap-4",
-              }}
-              label="选择导入内容"
-              orientation="horizontal"
-              value={importTypes}
-              onValueChange={(values) => setImportTypes(values as string[])}
-            >
-              <Checkbox value="users">用户</Checkbox>
-              <Checkbox value="nodes">节点</Checkbox>
-              <Checkbox value="tunnels">隧道</Checkbox>
-              <Checkbox value="forwards">转发</Checkbox>
-              <Checkbox value="userTunnels">用户隧道权限</Checkbox>
-              <Checkbox value="speedLimits">限速规则</Checkbox>
-              <Checkbox value="tunnelGroups">隧道分组</Checkbox>
-              <Checkbox value="userGroups">用户分组</Checkbox>
-              <Checkbox value="permissions">分组权限</Checkbox>
-              <Checkbox value="configs">系统配置</Checkbox>
-            </CheckboxGroup>
+            {renderTypeSelection("选择导入内容", importTypes, setImportTypes)}
 
             <input
               ref={fileInputRef}
