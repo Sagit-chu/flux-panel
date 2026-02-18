@@ -259,6 +259,7 @@ gitee/
 doraemon.jks
 device.id
 commit.sh
+.opencode/
 sql/
 !go-backend/internal/store/sqlite/sql/
 !go-backend/internal/store/sqlite/sql/schema.sql
