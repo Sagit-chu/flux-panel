@@ -688,7 +688,7 @@ export default function UserPage() {
             return (
               <Card
                 key={user.id}
-                className="shadow-sm border border-divider hover:shadow-md transition-shadow duration-200"
+                className="shadow-sm border border-divider hover:shadow-md transition-shadow duration-200 overflow-hidden"
               >
                 <CardHeader className="pb-2 md:pb-2">
                   <div className="flex justify-between items-start w-full">

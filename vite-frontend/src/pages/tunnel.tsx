@@ -740,7 +740,7 @@ export default function TunnelPage() {
                     {(listeners) => (
                       <Card
                         key={tunnel.id}
-                        className="group shadow-sm border border-divider hover:shadow-md transition-shadow duration-200"
+                        className="group shadow-sm border border-divider hover:shadow-md transition-shadow duration-200 overflow-hidden"
                       >
                         <CardHeader className="pb-2 md:pb-2">
                           <div className="flex justify-between items-start w-full">
