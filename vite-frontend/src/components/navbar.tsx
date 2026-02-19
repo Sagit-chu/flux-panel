@@ -1,26 +1,21 @@
-import { useState, useEffect } from "react";
-import { Link } from "@heroui/link";
+import { useEffect, useState } from "react";
+import { Link } from "@/shadcn-bridge/heroui/link";
 import {
   Navbar as HeroUINavbar,
   NavbarBrand,
   NavbarContent,
-} from "@heroui/navbar";
+} from "@/shadcn-bridge/heroui/navbar";
 import { useNavigate } from "react-router-dom";
 
-import { isWebViewFunc } from "@/utils/panel";
 import { Logo } from "@/components/icons";
 import { siteConfig, getCachedConfig } from "@/config/site";
+import { useWebViewMode } from "@/hooks/useWebViewMode";
 
 export const Navbar = () => {
   const navigate = useNavigate();
   // 初始状态使用siteConfig中已经从缓存读取的值，避免闪烁
   const [appName, setAppName] = useState(siteConfig.name);
-  const [isWebView, setIsWebView] = useState(false);
-
-  // 检测是否在WebView中运行
-  useEffect(() => {
-    setIsWebView(isWebViewFunc());
-  }, []);
+  const isWebView = useWebViewMode();
 
   useEffect(() => {
     // 异步检查是否有更新的配置

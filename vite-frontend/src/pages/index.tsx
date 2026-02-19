@@ -1,16 +1,17 @@
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { useState, useEffect } from "react";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Input } from "@/shadcn-bridge/heroui/input";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Turnstile } from "@marsidev/react-turnstile";
 
-import { isWebViewFunc } from "@/utils/panel";
 import { siteConfig } from "@/config/site";
 import { title } from "@/components/primitives";
 import DefaultLayout from "@/layouts/default";
 import { login, LoginData, checkCaptcha, getConfigByName } from "@/api";
+import { writeLoginSession } from "@/utils/session";
+import { useWebViewMode } from "@/hooks/useWebViewMode";
 
 interface LoginForm {
   username: string;
@@ -29,12 +30,7 @@ export default function IndexPage() {
   const [showCaptcha, setShowCaptcha] = useState(false);
   const [siteKey, setSiteKey] = useState("");
   const navigate = useNavigate();
-  const [isWebView, setIsWebView] = useState(false);
-
-  // 检测是否在WebView中运行
-  useEffect(() => {
-    setIsWebView(isWebViewFunc());
-  }, []);
+  const isWebView = useWebViewMode();
 
   // 验证表单
   const validateForm = (): boolean => {
@@ -91,10 +87,7 @@ export default function IndexPage() {
 
       // 检查是否需要强制修改密码
       if (response.data.requirePasswordChange) {
-        localStorage.setItem("token", response.data.token);
-        localStorage.setItem("role_id", response.data.role_id.toString());
-        localStorage.setItem("name", response.data.name);
-        localStorage.setItem("admin", (response.data.role_id === 0).toString());
+        writeLoginSession(response.data);
         toast.success("检测到默认密码，即将跳转到修改密码页面");
         navigate("/change-password");
 
@@ -102,10 +95,7 @@ export default function IndexPage() {
       }
 
       // 保存登录信息
-      localStorage.setItem("token", response.data.token);
-      localStorage.setItem("role_id", response.data.role_id.toString());
-      localStorage.setItem("name", response.data.name);
-      localStorage.setItem("admin", (response.data.role_id === 0).toString());
+      writeLoginSession(response.data);
 
       // 登录成功
       toast.success("登录成功");
@@ -206,7 +196,7 @@ export default function IndexPage() {
                   disabled={loading}
                   isLoading={loading}
                   size="lg"
-                  onClick={handleLogin}
+                  onPress={handleLogin}
                 >
                   {loading ? (showCaptcha ? "验证中..." : "登录中...") : "登录"}
                 </Button>
@@ -238,10 +228,9 @@ export default function IndexPage() {
         {showCaptcha && siteKey && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             {/* 背景遮罩层 - 模糊效果，暗黑模式下更深 */}
-            <div
+            <button
               className="absolute inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-sm captcha-backdrop-enter"
-              role="button"
-              tabIndex={0}
+              type="button"
               onClick={() => {
                 setShowCaptcha(false);
                 setLoading(false);

@@ -1,25 +1,24 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Textarea } from "@heroui/input";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Input } from "@/shadcn-bridge/heroui/input";
+import { Textarea } from "@/shadcn-bridge/heroui/input";
 import {
   Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalFooter,
-} from "@heroui/modal";
-import { Chip } from "@heroui/chip";
-import { Switch } from "@heroui/switch";
-import { Spinner } from "@heroui/spinner";
-import { Alert } from "@heroui/alert";
-import { Progress } from "@heroui/progress";
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Select, SelectItem } from "@heroui/select";
-import { Checkbox } from "@heroui/checkbox";
+} from "@/shadcn-bridge/heroui/modal";
+import { Chip } from "@/shadcn-bridge/heroui/chip";
+import { Switch } from "@/shadcn-bridge/heroui/switch";
+import { Spinner } from "@/shadcn-bridge/heroui/spinner";
+import { Alert } from "@/shadcn-bridge/heroui/alert";
+import { Progress } from "@/shadcn-bridge/heroui/progress";
+import { Accordion, AccordionItem } from "@/shadcn-bridge/heroui/accordion";
+import { Select, SelectItem } from "@/shadcn-bridge/heroui/select";
+import { Checkbox } from "@/shadcn-bridge/heroui/checkbox";
 import toast from "react-hot-toast";
-import axios from "axios";
 import {
   DndContext,
   KeyboardSensor,
@@ -51,6 +50,16 @@ import {
   getNodeReleases,
   rollbackNode,
 } from "@/api";
+import { PageEmptyState, PageLoadingState } from "@/components/page-state";
+import {
+  getConnectionStatusMeta,
+  getRemoteSyncErrorMessage,
+} from "@/pages/node/display";
+import { tryCopyInstallCommand } from "@/pages/node/install-command";
+import { buildNodeSystemInfo } from "@/pages/node/system-info";
+import { useNodeOfflineTimers } from "@/pages/node/use-node-offline-timers";
+import { useNodeRealtime } from "@/pages/node/use-node-realtime";
+import { loadStoredOrder, saveOrder } from "@/utils/order-storage";
 
 interface Node {
   id: number;
@@ -140,8 +149,6 @@ export default function NodePage() {
   const [nodeList, setNodeList] = useState<Node[]>([]);
   const [nodeOrder, setNodeOrder] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
-  const [wsConnected, setWsConnected] = useState(false);
-  const [wsConnecting, setWsConnecting] = useState(false);
   const [dialogVisible, setDialogVisible] = useState(false);
   const [dialogTitle, setDialogTitle] = useState("");
   const [isEdit, setIsEdit] = useState(false);
@@ -200,53 +207,26 @@ export default function NodePage() {
     Record<number, { stage: string; percent: number; message: string }>
   >({});
 
-  const websocketRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const maxReconnectAttempts = 5;
-  const offlineTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(
-    new Map(),
-  );
-  const offlineDelayMs = 3000;
+  const handleNodeOffline = useCallback((nodeId: number) => {
+    setNodeList((prev) =>
+      prev.map((node) => {
+        if (node.id !== nodeId) return node;
+        if (node.connectionStatus === "offline" && node.systemInfo === null) {
+          return node;
+        }
 
-  const clearOfflineTimer = (nodeId: number) => {
-    const timer = offlineTimersRef.current.get(nodeId);
-
-    if (timer) {
-      clearTimeout(timer);
-      offlineTimersRef.current.delete(nodeId);
-    }
-  };
-
-  const scheduleNodeOffline = (nodeId: number) => {
-    if (offlineTimersRef.current.has(nodeId)) return;
-    const timer = setTimeout(() => {
-      offlineTimersRef.current.delete(nodeId);
-      setNodeList((prev) =>
-        prev.map((node) => {
-          if (node.id !== nodeId) return node;
-          if (node.connectionStatus === "offline" && node.systemInfo === null)
-            return node;
-
-          return { ...node, connectionStatus: "offline", systemInfo: null };
-        }),
-      );
-    }, offlineDelayMs);
-
-    offlineTimersRef.current.set(nodeId, timer);
-  };
-
-  useEffect(() => {
-    loadNodes();
-    initWebSocket();
-
-    return () => {
-      closeWebSocket();
-    };
+        return { ...node, connectionStatus: "offline", systemInfo: null };
+      }),
+    );
   }, []);
 
+  const { clearOfflineTimer, scheduleNodeOffline } = useNodeOfflineTimers({
+    delayMs: 3000,
+    onNodeOffline: handleNodeOffline,
+  });
+
   // 加载节点列表
-  const loadNodes = async () => {
+  const loadNodes = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getNodeList();
@@ -279,32 +259,12 @@ export default function NodePage() {
 
           setNodeOrder(dbOrder);
         } else {
-          try {
-            const stored = localStorage.getItem("node-order");
-
-            if (stored) {
-              const parsed = JSON.parse(stored);
-
-              if (Array.isArray(parsed)) {
-                const existingIds = new Set(nodesData.map((n) => n.id));
-                const validOrder = parsed
-                  .map((id: any) => Number(id))
-                  .filter((id: number) => existingIds.has(id));
-
-                if (validOrder.length > 0) {
-                  setNodeOrder(validOrder);
-                } else {
-                  setNodeOrder(nodesData.map((n) => n.id));
-                }
-              } else {
-                setNodeOrder(nodesData.map((n) => n.id));
-              }
-            } else {
-              setNodeOrder(nodesData.map((n) => n.id));
-            }
-          } catch {
-            setNodeOrder(nodesData.map((n) => n.id));
-          }
+          setNodeOrder(
+            loadStoredOrder(
+              "node-order",
+              nodesData.map((n) => n.id),
+            ),
+          );
         }
       } else {
         toast.error(res.msg || "加载节点列表失败");
@@ -314,68 +274,7 @@ export default function NodePage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // 初始化WebSocket连接
-  const initWebSocket = () => {
-    if (
-      websocketRef.current &&
-      (websocketRef.current.readyState === WebSocket.OPEN ||
-        websocketRef.current.readyState === WebSocket.CONNECTING)
-    ) {
-      return;
-    }
-
-    if (websocketRef.current) {
-      closeWebSocket();
-    }
-
-    // 构建WebSocket URL，使用axios的baseURL
-    const baseUrl =
-      axios.defaults.baseURL ||
-      (import.meta.env.VITE_API_BASE
-        ? `${import.meta.env.VITE_API_BASE}/api/v1/`
-        : "/api/v1/");
-    const wsUrl =
-      baseUrl.replace(/^http/, "ws").replace(/\/api\/v1\/$/, "") +
-      `/system-info?type=0&secret=${localStorage.getItem("token")}`;
-
-    try {
-      setWsConnecting(true);
-      websocketRef.current = new WebSocket(wsUrl);
-
-      websocketRef.current.onopen = () => {
-        reconnectAttemptsRef.current = 0;
-        setWsConnected(true);
-        setWsConnecting(false);
-      };
-
-      websocketRef.current.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          handleWebSocketMessage(data);
-        } catch {
-          // 解析失败时不输出错误信息
-        }
-      };
-
-      websocketRef.current.onerror = () => {
-        // WebSocket错误时不输出错误信息
-      };
-
-      websocketRef.current.onclose = () => {
-        websocketRef.current = null;
-        setWsConnected(false);
-        setWsConnecting(false);
-        attemptReconnect();
-      };
-    } catch {
-      setWsConnected(false);
-      setWsConnecting(false);
-      attemptReconnect();
-    }
-  };
+  }, []);
 
   // 处理WebSocket消息
   const handleWebSocketMessage = (data: any) => {
@@ -404,61 +303,20 @@ export default function NodePage() {
       setNodeList((prev) =>
         prev.map((node) => {
           if (node.id === nodeId) {
-            try {
-              let systemInfo;
+            const systemInfo = buildNodeSystemInfo(
+              messageData,
+              node.systemInfo,
+            );
 
-              if (typeof messageData === "string") {
-                systemInfo = JSON.parse(messageData);
-              } else {
-                systemInfo = messageData;
-              }
-
-              const currentUpload = parseInt(systemInfo.bytes_transmitted) || 0;
-              const currentDownload = parseInt(systemInfo.bytes_received) || 0;
-              const currentUptime = parseInt(systemInfo.uptime) || 0;
-
-              let uploadSpeed = 0;
-              let downloadSpeed = 0;
-
-              if (node.systemInfo && node.systemInfo.uptime) {
-                const timeDiff = currentUptime - node.systemInfo.uptime;
-
-                if (timeDiff > 0 && timeDiff <= 10) {
-                  const lastUpload = node.systemInfo.uploadTraffic || 0;
-                  const lastDownload = node.systemInfo.downloadTraffic || 0;
-
-                  const uploadDiff = currentUpload - lastUpload;
-                  const downloadDiff = currentDownload - lastDownload;
-
-                  const uploadReset = currentUpload < lastUpload;
-                  const downloadReset = currentDownload < lastDownload;
-
-                  if (!uploadReset && uploadDiff >= 0) {
-                    uploadSpeed = uploadDiff / timeDiff;
-                  }
-
-                  if (!downloadReset && downloadDiff >= 0) {
-                    downloadSpeed = downloadDiff / timeDiff;
-                  }
-                }
-              }
-
-              return {
-                ...node,
-                connectionStatus: "online",
-                systemInfo: {
-                  cpuUsage: parseFloat(systemInfo.cpu_usage) || 0,
-                  memoryUsage: parseFloat(systemInfo.memory_usage) || 0,
-                  uploadTraffic: currentUpload,
-                  downloadTraffic: currentDownload,
-                  uploadSpeed: uploadSpeed,
-                  downloadSpeed: downloadSpeed,
-                  uptime: currentUptime,
-                },
-              };
-            } catch {
+            if (!systemInfo) {
               return node;
             }
+
+            return {
+              ...node,
+              connectionStatus: "online",
+              systemInfo,
+            };
           }
 
           return node;
@@ -487,49 +345,13 @@ export default function NodePage() {
     }
   };
 
-  // 尝试重新连接
-  const attemptReconnect = () => {
-    if (reconnectTimerRef.current) return;
-    if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-      reconnectAttemptsRef.current++;
+  const { wsConnected, wsConnecting } = useNodeRealtime({
+    onMessage: handleWebSocketMessage,
+  });
 
-      reconnectTimerRef.current = setTimeout(() => {
-        reconnectTimerRef.current = null;
-        initWebSocket();
-      }, 3000 * reconnectAttemptsRef.current);
-    }
-  };
-
-  // 关闭WebSocket连接
-  const closeWebSocket = () => {
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-
-    offlineTimersRef.current.forEach((timer) => clearTimeout(timer));
-    offlineTimersRef.current.clear();
-
-    reconnectAttemptsRef.current = 0;
-    setWsConnected(false);
-    setWsConnecting(false);
-
-    if (websocketRef.current) {
-      websocketRef.current.onopen = null;
-      websocketRef.current.onmessage = null;
-      websocketRef.current.onerror = null;
-      websocketRef.current.onclose = null;
-
-      if (
-        websocketRef.current.readyState === WebSocket.OPEN ||
-        websocketRef.current.readyState === WebSocket.CONNECTING
-      ) {
-        websocketRef.current.close();
-      }
-
-      websocketRef.current = null;
-    }
-  };
+  useEffect(() => {
+    loadNodes();
+  }, [loadNodes]);
 
   // 格式化速度
   const formatSpeed = (bytesPerSecond: number): string => {
@@ -797,11 +619,11 @@ export default function NodePage() {
       const res = await getNodeInstallCommand(node.id);
 
       if (res.code === 0 && res.data) {
-        try {
-          await navigator.clipboard.writeText(res.data);
+        const copied = await tryCopyInstallCommand(res.data);
+
+        if (copied) {
           toast.success("安装命令已复制到剪贴板");
-        } catch {
-          // 复制失败，显示安装命令模态框
+        } else {
           setInstallCommand(res.data);
           setCurrentNodeName(node.name);
           setInstallCommandModal(true);
@@ -1031,10 +853,7 @@ export default function NodePage() {
 
     setNodeOrder(newOrder);
 
-    // 保存到 localStorage
-    try {
-      localStorage.setItem("node-order", JSON.stringify(newOrder));
-    } catch {}
+    saveOrder("node-order", newOrder);
 
     // 持久化到数据库
     try {
@@ -1241,42 +1060,12 @@ export default function NodePage() {
 
       {/* 节点列表 */}
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="flex items-center gap-3">
-            <Spinner size="sm" />
-            <span className="text-default-600">正在加载...</span>
-          </div>
-        </div>
+        <PageLoadingState message="正在加载..." />
       ) : nodeList.length === 0 ? (
-        <Card className="shadow-sm border border-gray-200 dark:border-gray-700">
-          <CardBody className="text-center py-16">
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-16 h-16 bg-default-100 rounded-full flex items-center justify-center">
-                <svg
-                  className="w-8 h-8 text-default-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M5 12h14M5 12l4-4m-4 4l4 4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">
-                  暂无节点配置
-                </h3>
-                <p className="text-default-500 text-sm mt-1">
-                  还没有创建任何节点配置，点击上方按钮开始创建
-                </p>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
+        <PageEmptyState
+          className="h-64"
+          message="暂无节点配置，点击上方按钮开始创建"
+        />
       ) : (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
           <SortableContext
@@ -1315,6 +1104,7 @@ export default function NodePage() {
                                 title="拖拽排序"
                               >
                                 <svg
+                                  aria-hidden="true"
                                   className="w-4 h-4"
                                   fill="currentColor"
                                   viewBox="0 0 20 20"
@@ -1332,20 +1122,23 @@ export default function NodePage() {
                                   远程
                                 </Chip>
                               )}
-                              <Chip
-                                className="text-xs"
-                                color={
-                                  node.connectionStatus === "online"
-                                    ? "success"
-                                    : "danger"
-                                }
-                                size="sm"
-                                variant="flat"
-                              >
-                                {node.connectionStatus === "online"
-                                  ? "在线"
-                                  : "离线"}
-                              </Chip>
+                              {(() => {
+                                const connectionStatusMeta =
+                                  getConnectionStatusMeta(
+                                    node.connectionStatus,
+                                  );
+
+                                return (
+                                  <Chip
+                                    className="text-xs"
+                                    color={connectionStatusMeta.color}
+                                    size="sm"
+                                    variant="flat"
+                                  >
+                                    {connectionStatusMeta.text}
+                                  </Chip>
+                                );
+                              })()}
                             </div>
                           </div>
                         </CardHeader>
@@ -1353,13 +1146,7 @@ export default function NodePage() {
                         <CardBody className="pt-0 pb-3">
                           {isRemoteNode && node.syncError && (
                             <div className="mb-3 px-2 py-1.5 rounded-md bg-warning-50 dark:bg-warning-100/10 text-warning-700 dark:text-warning-400 text-xs">
-                              {node.syncError === "provider_share_deleted"
-                                ? "提供方已删除该分享"
-                                : node.syncError === "provider_share_disabled"
-                                  ? "提供方已禁用该分享"
-                                  : node.syncError === "provider_share_expired"
-                                    ? "提供方分享已过期"
-                                    : `远程同步失败: ${node.syncError}`}
+                              {getRemoteSyncErrorMessage(node.syncError)}
                             </div>
                           )}
                           {/* 基础信息 */}
@@ -1816,6 +1603,7 @@ export default function NodePage() {
                         <div className="px-3 py-3 rounded-lg bg-white dark:bg-default-50 border border-default-200 dark:border-default-100/30 hover:border-primary-200 transition-colors">
                           <div className="flex items-center gap-2 mb-2">
                             <svg
+                              aria-hidden="true"
                               className="w-4 h-4 text-default-500"
                               fill="none"
                               stroke="currentColor"
@@ -1856,6 +1644,7 @@ export default function NodePage() {
                         <div className="px-3 py-3 rounded-lg bg-white dark:bg-default-50 border border-default-200 dark:border-default-100/30 hover:border-primary-200 transition-colors">
                           <div className="flex items-center gap-2 mb-2">
                             <svg
+                              aria-hidden="true"
                               className="w-4 h-4 text-default-500"
                               fill="none"
                               stroke="currentColor"
@@ -1899,6 +1688,7 @@ export default function NodePage() {
                         <div className="px-3 py-3 rounded-lg bg-white dark:bg-default-50 border border-default-200 dark:border-default-100/30 hover:border-primary-200 transition-colors">
                           <div className="flex items-center gap-2 mb-2">
                             <svg
+                              aria-hidden="true"
                               className="w-4 h-4 text-default-500"
                               fill="none"
                               stroke="currentColor"

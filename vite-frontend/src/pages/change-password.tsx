@@ -1,6 +1,6 @@
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Card, CardBody, CardHeader } from "@heroui/card";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Input } from "@/shadcn-bridge/heroui/input";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -115,6 +115,7 @@ export default function ChangePasswordPage() {
             <CardHeader className="pb-0 pt-6 px-6 flex-col items-center">
               <div className="w-12 h-12 bg-warning-100 rounded-full flex items-center justify-center mb-3">
                 <svg
+                  aria-hidden="true"
                   className="w-6 h-6 text-warning-600"
                   fill="currentColor"
                   viewBox="0 0 20 20"
@@ -200,7 +201,7 @@ export default function ChangePasswordPage() {
                   disabled={loading}
                   isLoading={loading}
                   size="lg"
-                  onClick={handleSubmit}
+                  onPress={handleSubmit}
                 >
                   {loading ? "修改中..." : "立即修改账号密码"}
                 </Button>

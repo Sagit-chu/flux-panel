@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Button } from "@heroui/button";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Input } from "@heroui/input";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
+import { Input } from "@/shadcn-bridge/heroui/input";
 import {
   Table,
   TableHeader,
@@ -9,7 +9,7 @@ import {
   TableBody,
   TableRow,
   TableCell,
-} from "@heroui/table";
+} from "@/shadcn-bridge/heroui/table";
 import {
   Modal,
   ModalContent,
@@ -17,14 +17,14 @@ import {
   ModalBody,
   ModalFooter,
   useDisclosure,
-} from "@heroui/modal";
-import { Chip } from "@heroui/chip";
-import { Select, SelectItem } from "@heroui/select";
-import { RadioGroup, Radio } from "@heroui/radio";
-import { Checkbox } from "@heroui/checkbox";
-import { DatePicker } from "@heroui/date-picker";
-import { Spinner } from "@heroui/spinner";
-import { Progress } from "@heroui/progress";
+} from "@/shadcn-bridge/heroui/modal";
+import { Chip } from "@/shadcn-bridge/heroui/chip";
+import { Select, SelectItem } from "@/shadcn-bridge/heroui/select";
+import { RadioGroup, Radio } from "@/shadcn-bridge/heroui/radio";
+import { Checkbox } from "@/shadcn-bridge/heroui/checkbox";
+import { DatePicker } from "@/shadcn-bridge/heroui/date-picker";
+import { Spinner } from "@/shadcn-bridge/heroui/spinner";
+import { Progress } from "@/shadcn-bridge/heroui/progress";
 import toast from "react-hot-toast";
 import { parseDate } from "@internationalized/date";
 
@@ -60,6 +60,7 @@ import {
   UserIcon,
   SettingsIcon,
 } from "@/components/icons";
+import { PageLoadingState } from "@/components/page-state";
 
 // 工具函数
 const formatFlow = (value: number, unit: string = "bytes"): string => {
@@ -228,9 +229,7 @@ export default function UserPage() {
       });
 
       if (response.code === 0) {
-        const data = response.data || {};
-
-        setUsers(data || []);
+        setUsers(Array.isArray(response.data) ? response.data : []);
       } else {
         toast.error(response.msg || "获取用户列表失败");
       }
@@ -246,7 +245,7 @@ export default function UserPage() {
       const response = await getTunnelList();
 
       if (response.code === 0) {
-        setTunnels(response.data || []);
+        setTunnels(Array.isArray(response.data) ? response.data : []);
       }
     } catch {}
   };
@@ -256,7 +255,15 @@ export default function UserPage() {
       const response = await getSpeedLimitList();
 
       if (response.code === 0) {
-        setSpeedLimits(response.data || []);
+        const speedLimitList = Array.isArray(response.data)
+          ? response.data.map((item) => ({
+              ...item,
+              uploadSpeed: item.uploadSpeed ?? item.speed ?? 0,
+              downloadSpeed: item.downloadSpeed ?? item.speed ?? 0,
+            }))
+          : [];
+
+        setSpeedLimits(speedLimitList);
       }
     } catch {}
   };
@@ -266,7 +273,7 @@ export default function UserPage() {
       const response = await getUserGroupList();
 
       if (response.code === 0) {
-        setUserGroups(response.data || []);
+        setUserGroups(Array.isArray(response.data) ? response.data : []);
       }
     } catch {}
   };
@@ -277,7 +284,7 @@ export default function UserPage() {
       const response = await getUserTunnelList({ userId });
 
       if (response.code === 0) {
-        setUserTunnels(response.data || []);
+        setUserTunnels(Array.isArray(response.data) ? response.data : []);
       } else {
         toast.error(response.msg || "获取隧道权限列表失败");
       }
@@ -626,10 +633,11 @@ export default function UserPage() {
             />
             <Button
               isIconOnly
+              aria-label="搜索用户"
               className="min-h-10 w-10"
               color="primary"
               variant="solid"
-              onClick={handleSearch}
+              onPress={handleSearch}
             >
               <SearchIcon className="w-4 h-4" />
             </Button>
@@ -643,12 +651,7 @@ export default function UserPage() {
 
       {/* 用户列表 */}
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="flex items-center gap-3">
-            <Spinner size="sm" />
-            <span className="text-default-600">正在加载...</span>
-          </div>
-        </div>
+        <PageLoadingState message="正在加载..." />
       ) : users.length === 0 ? (
         <Card className="shadow-sm border border-gray-200 dark:border-gray-700">
           <CardBody className="text-center py-16">
@@ -799,6 +802,7 @@ export default function UserPage() {
                         size="sm"
                         startContent={
                           <svg
+                            aria-hidden="true"
                             className="w-3 h-3"
                             fill="currentColor"
                             viewBox="0 0 20 20"
@@ -1259,22 +1263,25 @@ export default function UserPage() {
                           <div className="flex items-center gap-2">
                             <Button
                               isIconOnly
+                              aria-label="编辑隧道权限"
                               color="primary"
                               size="sm"
                               variant="flat"
-                              onClick={() => handleEditTunnel(userTunnel)}
+                              onPress={() => handleEditTunnel(userTunnel)}
                             >
                               <EditIcon className="w-4 h-4" />
                             </Button>
                             <Button
                               isIconOnly
+                              aria-label="重置隧道流量"
                               color="warning"
                               size="sm"
                               title="重置流量"
                               variant="flat"
-                              onClick={() => handleResetTunnelFlow(userTunnel)}
+                              onPress={() => handleResetTunnelFlow(userTunnel)}
                             >
                               <svg
+                                aria-hidden="true"
                                 className="w-4 h-4"
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
@@ -1288,10 +1295,11 @@ export default function UserPage() {
                             </Button>
                             <Button
                               isIconOnly
+                              aria-label="删除隧道权限"
                               color="danger"
                               size="sm"
                               variant="flat"
-                              onClick={() => handleRemoveTunnel(userTunnel)}
+                              onPress={() => handleRemoveTunnel(userTunnel)}
                             >
                               <DeleteIcon className="w-4 h-4" />
                             </Button>
@@ -1596,6 +1604,7 @@ export default function UserPage() {
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-warning-100 rounded-full flex items-center justify-center">
                 <svg
+                  aria-hidden="true"
                   className="w-6 h-6 text-warning"
                   fill="currentColor"
                   viewBox="0 0 20 20"
@@ -1684,6 +1693,7 @@ export default function UserPage() {
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-warning-100 rounded-full flex items-center justify-center">
                 <svg
+                  aria-hidden="true"
                   className="w-6 h-6 text-warning"
                   fill="currentColor"
                   viewBox="0 0 20 20"

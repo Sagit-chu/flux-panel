@@ -1,22 +1,22 @@
 import { useState, useEffect, useMemo } from "react";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Textarea } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Input } from "@/shadcn-bridge/heroui/input";
+import { Textarea } from "@/shadcn-bridge/heroui/input";
+import { Select, SelectItem } from "@/shadcn-bridge/heroui/select";
 import {
   Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalFooter,
-} from "@heroui/modal";
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
-import { Switch } from "@heroui/switch";
-import { Alert } from "@heroui/alert";
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Checkbox } from "@heroui/checkbox";
+} from "@/shadcn-bridge/heroui/modal";
+import { Chip } from "@/shadcn-bridge/heroui/chip";
+import { Spinner } from "@/shadcn-bridge/heroui/spinner";
+import { Switch } from "@/shadcn-bridge/heroui/switch";
+import { Alert } from "@/shadcn-bridge/heroui/alert";
+import { Accordion, AccordionItem } from "@/shadcn-bridge/heroui/accordion";
+import { Checkbox } from "@/shadcn-bridge/heroui/checkbox";
 import toast from "react-hot-toast";
 import {
   DndContext,
@@ -48,12 +48,29 @@ import {
   resumeForwardService,
   diagnoseForward,
   updateForwardOrder,
-  batchDeleteForwards,
-  batchPauseForwards,
-  batchResumeForwards,
-  batchRedeployForwards,
-  batchChangeTunnel,
 } from "@/api";
+import {
+  type ForwardAddressItem,
+  formatInAddress,
+  formatRemoteAddress,
+  hasMultipleAddresses,
+  resolveForwardAddressAction,
+} from "@/pages/forward/address";
+import {
+  buildForwardDiagnosisFallbackResult,
+  getForwardDiagnosisQualityDisplay,
+  type ForwardDiagnosisResult,
+} from "@/pages/forward/diagnosis";
+import {
+  executeForwardBatchChangeTunnel,
+  executeForwardBatchDelete,
+  executeForwardBatchRedeploy,
+  executeForwardBatchToggleService,
+} from "@/pages/forward/batch-actions";
+import { buildForwardOrder, FORWARD_ORDER_KEY } from "@/pages/forward/order";
+import { PageLoadingState } from "@/components/page-state";
+import { useMobileBreakpoint } from "@/hooks/useMobileBreakpoint";
+import { saveOrder } from "@/utils/order-storage";
 import { JwtUtil } from "@/utils/jwt";
 
 interface Forward {
@@ -94,32 +111,6 @@ interface ForwardForm {
   strategy: string;
 }
 
-interface AddressItem {
-  id: number;
-  address: string;
-  copying: boolean;
-}
-
-interface DiagnosisResult {
-  forwardName: string;
-  timestamp: number;
-  results: Array<{
-    success: boolean;
-    description: string;
-    nodeName: string;
-    nodeId: string;
-    targetIp: string;
-    targetPort?: number;
-    message?: string;
-    averageTime?: number;
-    packetLoss?: number;
-    fromChainType?: number; // 1: 入口, 2: 链, 3: 出口
-    fromInx?: number;
-    toChainType?: number;
-    toInx?: number;
-  }>;
-}
-
 // 添加分组接口
 interface UserGroup {
   userId: number | null;
@@ -137,20 +128,7 @@ export default function ForwardPage() {
   const [loading, setLoading] = useState(true);
   const [forwards, setForwards] = useState<Forward[]>([]);
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
-
-  // 检测是否为移动端
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
+  const isMobile = useMobileBreakpoint();
 
   // 显示模式状态 - 从localStorage读取，默认为平铺显示
   const [viewMode, setViewMode] = useState<"grouped" | "direct">(() => {
@@ -179,9 +157,9 @@ export default function ForwardPage() {
   const [currentDiagnosisForward, setCurrentDiagnosisForward] =
     useState<Forward | null>(null);
   const [diagnosisResult, setDiagnosisResult] =
-    useState<DiagnosisResult | null>(null);
+    useState<ForwardDiagnosisResult | null>(null);
   const [addressModalTitle, setAddressModalTitle] = useState("");
-  const [addressList, setAddressList] = useState<AddressItem[]>([]);
+  const [addressList, setAddressList] = useState<ForwardAddressItem[]>([]);
 
   // 导出相关状态
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -245,56 +223,16 @@ export default function ForwardPage() {
 
       // 切换到直接显示模式时，初始化拖拽排序顺序
       if (newMode === "direct") {
-        // 在平铺模式下，只对当前用户的转发进行排序
         const currentUserId = JwtUtil.getUserIdFromToken();
-        let userForwards = forwards;
-
-        if (currentUserId !== null) {
-          userForwards = forwards.filter(
-            (f: Forward) => f.userId === currentUserId,
-          );
-        }
-
-        // 检查数据库中是否有排序信息
-        const hasDbOrdering = userForwards.some(
-          (f: Forward) => f.inx !== undefined && f.inx !== 0,
+        const { order, fromDatabase } = buildForwardOrder(
+          forwards,
+          currentUserId,
         );
 
-        if (hasDbOrdering) {
-          // 使用数据库中的排序信息
-          const dbOrder = userForwards
-            .sort((a: Forward, b: Forward) => (a.inx ?? 0) - (b.inx ?? 0))
-            .map((f: Forward) => f.id);
+        setForwardOrder(order);
 
-          setForwardOrder(dbOrder);
-
-          // 同步到localStorage
-          try {
-            localStorage.setItem("forward-order", JSON.stringify(dbOrder));
-          } catch {}
-        } else {
-          // 使用本地存储的顺序
-          const savedOrder = localStorage.getItem("forward-order");
-
-          if (savedOrder) {
-            try {
-              const orderIds = JSON.parse(savedOrder);
-              const validOrder = orderIds.filter((id: number) =>
-                userForwards.some((f: Forward) => f.id === id),
-              );
-
-              userForwards.forEach((forward: Forward) => {
-                if (!validOrder.includes(forward.id)) {
-                  validOrder.push(forward.id);
-                }
-              });
-              setForwardOrder(validOrder);
-            } catch {
-              setForwardOrder(userForwards.map((f: Forward) => f.id));
-            }
-          } else {
-            setForwardOrder(userForwards.map((f: Forward) => f.id));
-          }
+        if (fromDatabase) {
+          saveOrder(FORWARD_ORDER_KEY, order);
         }
       }
     } catch {}
@@ -320,58 +258,16 @@ export default function ForwardPage() {
 
         // 初始化拖拽排序顺序
         if (viewMode === "direct") {
-          // 在平铺模式下，只对当前用户的转发进行排序
           const currentUserId = JwtUtil.getUserIdFromToken();
-          let userForwards = forwardsData;
-
-          if (currentUserId !== null) {
-            userForwards = forwardsData.filter(
-              (f: Forward) => f.userId === currentUserId,
-            );
-          }
-
-          // 检查数据库中是否有排序信息
-          const hasDbOrdering = userForwards.some(
-            (f: Forward) => f.inx !== undefined && f.inx !== 0,
+          const { order, fromDatabase } = buildForwardOrder(
+            forwardsData,
+            currentUserId,
           );
 
-          if (hasDbOrdering) {
-            // 使用数据库中的排序信息
-            const dbOrder = userForwards
-              .sort((a: Forward, b: Forward) => (a.inx ?? 0) - (b.inx ?? 0))
-              .map((f: Forward) => f.id);
+          setForwardOrder(order);
 
-            setForwardOrder(dbOrder);
-
-            // 同步到localStorage
-            try {
-              localStorage.setItem("forward-order", JSON.stringify(dbOrder));
-            } catch {}
-          } else {
-            // 使用本地存储的顺序
-            const savedOrder = localStorage.getItem("forward-order");
-
-            if (savedOrder) {
-              try {
-                const orderIds = JSON.parse(savedOrder);
-                // 验证保存的顺序是否仍然有效（只包含当前用户的转发）
-                const validOrder = orderIds.filter((id: number) =>
-                  userForwards.some((f: Forward) => f.id === id),
-                );
-
-                // 添加新的转发ID（如果存在）
-                userForwards.forEach((forward: Forward) => {
-                  if (!validOrder.includes(forward.id)) {
-                    validOrder.push(forward.id);
-                  }
-                });
-                setForwardOrder(validOrder);
-              } catch {
-                setForwardOrder(userForwards.map((f: Forward) => f.id));
-              }
-            } else {
-              setForwardOrder(userForwards.map((f: Forward) => f.id));
-            }
+          if (fromDatabase) {
+            saveOrder(FORWARD_ORDER_KEY, order);
           }
         }
       } else {
@@ -587,7 +483,7 @@ export default function ForwardPage() {
 
       const addressCount = processedRemoteAddr.split(",").length;
 
-      let res;
+      let res: { code: number; msg: string };
 
       if (isEdit) {
         // 更新时确保包含必要字段
@@ -647,7 +543,7 @@ export default function ForwardPage() {
         ),
       );
 
-      let res;
+      let res: { code: number; msg: string };
 
       if (targetState) {
         res = await resumeForwardService(forward.id);
@@ -694,61 +590,31 @@ export default function ForwardPage() {
       const response = await diagnoseForward(forward.id);
 
       if (response.code === 0) {
-        setDiagnosisResult(response.data);
+        setDiagnosisResult(response.data as ForwardDiagnosisResult);
       } else {
         toast.error(response.msg || "诊断失败");
-        setDiagnosisResult({
-          forwardName: forward.name,
-          timestamp: Date.now(),
-          results: [
-            {
-              success: false,
-              description: "诊断失败",
-              nodeName: "-",
-              nodeId: "-",
-              targetIp: forward.remoteAddr.split(",")[0] || "-",
-              message: response.msg || "诊断过程中发生错误",
-            },
-          ],
-        });
+        setDiagnosisResult(
+          buildForwardDiagnosisFallbackResult({
+            forwardName: forward.name,
+            remoteAddr: forward.remoteAddr,
+            description: "诊断失败",
+            message: response.msg || "诊断过程中发生错误",
+          }),
+        );
       }
     } catch {
       toast.error("网络错误，请重试");
-      setDiagnosisResult({
-        forwardName: forward.name,
-        timestamp: Date.now(),
-        results: [
-          {
-            success: false,
-            description: "网络错误",
-            nodeName: "-",
-            nodeId: "-",
-            targetIp: forward.remoteAddr.split(",")[0] || "-",
-            message: "无法连接到服务器",
-          },
-        ],
-      });
+      setDiagnosisResult(
+        buildForwardDiagnosisFallbackResult({
+          forwardName: forward.name,
+          remoteAddr: forward.remoteAddr,
+          description: "网络错误",
+          message: "无法连接到服务器",
+        }),
+      );
     } finally {
       setDiagnosisLoading(false);
     }
-  };
-
-  // 获取连接质量
-  const getQualityDisplay = (averageTime?: number, packetLoss?: number) => {
-    if (averageTime === undefined || packetLoss === undefined) return null;
-
-    if (averageTime < 30 && packetLoss === 0)
-      return { text: "🚀 优秀", color: "success" };
-    if (averageTime < 50 && packetLoss === 0)
-      return { text: "✨ 很好", color: "success" };
-    if (averageTime < 100 && packetLoss < 1)
-      return { text: "👍 良好", color: "primary" };
-    if (averageTime < 150 && packetLoss < 2)
-      return { text: "😐 一般", color: "warning" };
-    if (averageTime < 200 && packetLoss < 5)
-      return { text: "😟 较差", color: "warning" };
-
-    return { text: "😵 很差", color: "danger" };
   };
 
   // 格式化流量
@@ -762,141 +628,26 @@ export default function ForwardPage() {
     return (value / (1024 * 1024 * 1024)).toFixed(2) + " GB";
   };
 
-  // 格式化入口地址
-  const formatInAddress = (ipString: string, port: number): string => {
-    if (!ipString) return "";
-
-    const items = ipString
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item);
-
-    if (items.length === 0) return "";
-
-    // 检查第一项是否已经包含端口（格式：IP:端口）
-    const firstItem = items[0];
-    const hasPort = /:\d+$/.test(firstItem);
-
-    if (hasPort) {
-      // inIp 已经包含完整的 IP:Port 组合
-      if (items.length === 1) {
-        return items[0];
-      }
-
-      return `${items[0]} (+${items.length - 1}个)`;
-    }
-
-    // inIp 只包含IP，需要添加端口（兼容旧数据）
-    if (!port) return "";
-
-    if (items.length === 1) {
-      const ip = items[0];
-
-      if (ip.includes(":") && !ip.startsWith("[")) {
-        return `[${ip}]:${port}`;
-      } else {
-        return `${ip}:${port}`;
-      }
-    }
-
-    const firstIp = items[0];
-    let formattedFirstIp;
-
-    if (firstIp.includes(":") && !firstIp.startsWith("[")) {
-      formattedFirstIp = `[${firstIp}]`;
-    } else {
-      formattedFirstIp = firstIp;
-    }
-
-    return `${formattedFirstIp}:${port} (+${items.length - 1}个)`;
-  };
-
-  // 格式化远程地址
-  const formatRemoteAddress = (addressString: string): string => {
-    if (!addressString) return "";
-
-    const addresses = addressString
-      .split(",")
-      .map((addr) => addr.trim())
-      .filter((addr) => addr);
-
-    if (addresses.length === 0) return "";
-    if (addresses.length === 1) return addresses[0];
-
-    return `${addresses[0]} (+${addresses.length - 1})`;
-  };
-
-  // 检查是否有多个地址
-  const hasMultipleAddresses = (addressString: string): boolean => {
-    if (!addressString) return false;
-    const addresses = addressString
-      .split(",")
-      .map((addr) => addr.trim())
-      .filter((addr) => addr);
-
-    return addresses.length > 1;
-  };
-
   // 显示地址列表弹窗
   const showAddressModal = (
     addressString: string,
     port: number | null,
     title: string,
   ) => {
-    if (!addressString) return;
+    const action = resolveForwardAddressAction(addressString, port, title);
 
-    let addresses: string[];
-
-    if (port !== null) {
-      // 入口地址处理
-      const items = addressString
-        .split(",")
-        .map((item) => item.trim())
-        .filter((item) => item);
-
-      if (items.length <= 1) {
-        copyToClipboard(formatInAddress(addressString, port), title);
-
-        return;
-      }
-
-      // 检查是否已经包含端口
-      const hasPort = /:\d+$/.test(items[0]);
-
-      if (hasPort) {
-        // 已经包含完整的 IP:Port 组合，直接使用
-        addresses = items;
-      } else {
-        // 只包含IP，需要添加端口
-        addresses = items.map((ip) => {
-          if (ip.includes(":") && !ip.startsWith("[")) {
-            return `[${ip}]:${port}`;
-          } else {
-            return `${ip}:${port}`;
-          }
-        });
-      }
-    } else {
-      // 远程地址处理
-      addresses = addressString
-        .split(",")
-        .map((addr) => addr.trim())
-        .filter((addr) => addr);
-      if (addresses.length <= 1) {
-        copyToClipboard(addressString, title);
-
-        return;
-      }
+    if (action.type === "none") {
+      return;
     }
 
-    setAddressList(
-      addresses.map((address, index) => ({
-        id: index,
-        address,
-        copying: false,
-      })),
-    );
-    setAddressModalTitle(`${title} (${addresses.length}个)`);
+    if (action.type === "copy") {
+      copyToClipboard(action.text, action.label);
+
+      return;
+    }
+
+    setAddressList(action.items);
+    setAddressModalTitle(action.title);
     setAddressModalOpen(true);
   };
 
@@ -911,7 +662,7 @@ export default function ForwardPage() {
   };
 
   // 复制地址
-  const copyAddress = async (addressItem: AddressItem) => {
+  const copyAddress = async (addressItem: ForwardAddressItem) => {
     try {
       setAddressList((prev) =>
         prev.map((item) =>
@@ -1220,10 +971,7 @@ export default function ForwardPage() {
 
       setForwardOrder(newOrder);
 
-      // 保存到localStorage
-      try {
-        localStorage.setItem("forward-order", JSON.stringify(newOrder));
-      } catch {}
+      saveOrder(FORWARD_ORDER_KEY, newOrder);
 
       // 持久化到数据库
       try {
@@ -1292,27 +1040,22 @@ export default function ForwardPage() {
     if (selectedIds.size === 0) return;
     setBatchLoading(true);
     try {
-      const res = await batchDeleteForwards(Array.from(selectedIds));
+      const outcome = await executeForwardBatchDelete(Array.from(selectedIds));
 
-      if (res.code === 0) {
-        const result = res.data;
+      if (outcome.toastVariant === "success") {
+        toast.success(outcome.toastMessage);
+      } else {
+        toast.error(outcome.toastMessage);
+      }
 
-        if (result.failCount === 0) {
-          toast.success(`成功删除 ${result.successCount} 项`);
-        } else {
-          toast.error(
-            `成功 ${result.successCount} 项，失败 ${result.failCount} 项`,
-          );
-        }
+      if (outcome.shouldRefresh) {
         setSelectedIds(new Set());
         setSelectMode(false);
-        setBatchDeleteModalOpen(false);
+        if (outcome.closeDeleteModal) {
+          setBatchDeleteModalOpen(false);
+        }
         loadData(false);
-      } else {
-        toast.error(res.msg || "删除失败");
       }
-    } catch (e: any) {
-      toast.error(e.message || "删除失败");
     } finally {
       setBatchLoading(false);
     }
@@ -1322,33 +1065,22 @@ export default function ForwardPage() {
     if (selectedIds.size === 0) return;
     setBatchLoading(true);
     try {
-      const ids = Array.from(selectedIds);
-      const res = enable
-        ? await batchResumeForwards(ids)
-        : await batchPauseForwards(ids);
+      const outcome = await executeForwardBatchToggleService(
+        Array.from(selectedIds),
+        enable,
+      );
 
-      if (res.code === 0) {
-        const result = res.data;
+      if (outcome.toastVariant === "success") {
+        toast.success(outcome.toastMessage);
+      } else {
+        toast.error(outcome.toastMessage);
+      }
 
-        if (result.failCount === 0) {
-          toast.success(
-            enable
-              ? `成功启用 ${result.successCount} 项`
-              : `成功停用 ${result.successCount} 项`,
-          );
-        } else {
-          toast.error(
-            `成功 ${result.successCount} 项，失败 ${result.failCount} 项`,
-          );
-        }
+      if (outcome.shouldRefresh) {
         setSelectedIds(new Set());
         setSelectMode(false);
         loadData(false);
-      } else {
-        toast.error(res.msg || (enable ? "启用失败" : "停用失败"));
       }
-    } catch (e: any) {
-      toast.error(e.message || (enable ? "启用失败" : "停用失败"));
     } finally {
       setBatchLoading(false);
     }
@@ -1358,26 +1090,21 @@ export default function ForwardPage() {
     if (selectedIds.size === 0) return;
     setBatchLoading(true);
     try {
-      const res = await batchRedeployForwards(Array.from(selectedIds));
+      const outcome = await executeForwardBatchRedeploy(
+        Array.from(selectedIds),
+      );
 
-      if (res.code === 0) {
-        const result = res.data;
+      if (outcome.toastVariant === "success") {
+        toast.success(outcome.toastMessage);
+      } else {
+        toast.error(outcome.toastMessage);
+      }
 
-        if (result.failCount === 0) {
-          toast.success(`成功重新下发 ${result.successCount} 项`);
-        } else {
-          toast.error(
-            `成功 ${result.successCount} 项，失败 ${result.failCount} 项`,
-          );
-        }
+      if (outcome.shouldRefresh) {
         setSelectedIds(new Set());
         setSelectMode(false);
         loadData(false);
-      } else {
-        toast.error(res.msg || "下发失败");
       }
-    } catch (e: any) {
-      toast.error(e.message || "下发失败");
     } finally {
       setBatchLoading(false);
     }
@@ -1387,31 +1114,28 @@ export default function ForwardPage() {
     if (selectedIds.size === 0 || !batchTargetTunnelId) return;
     setBatchLoading(true);
     try {
-      const res = await batchChangeTunnel({
-        forwardIds: Array.from(selectedIds),
-        targetTunnelId: batchTargetTunnelId,
-      });
+      const outcome = await executeForwardBatchChangeTunnel(
+        Array.from(selectedIds),
+        batchTargetTunnelId,
+      );
 
-      if (res.code === 0) {
-        const result = res.data;
+      if (outcome.toastVariant === "success") {
+        toast.success(outcome.toastMessage);
+      } else {
+        toast.error(outcome.toastMessage);
+      }
 
-        if (result.failCount === 0) {
-          toast.success(`成功换隧道 ${result.successCount} 项`);
-        } else {
-          toast.error(
-            `成功 ${result.successCount} 项，失败 ${result.failCount} 项`,
-          );
-        }
+      if (outcome.shouldRefresh) {
         setSelectedIds(new Set());
         setSelectMode(false);
-        setBatchChangeTunnelModalOpen(false);
-        setBatchTargetTunnelId(null);
+        if (outcome.closeChangeTunnelModal) {
+          setBatchChangeTunnelModalOpen(false);
+        }
+        if (outcome.resetTargetTunnel) {
+          setBatchTargetTunnelId(null);
+        }
         loadData(false);
-      } else {
-        toast.error(res.msg || "隧道失败");
       }
-    } catch (e: any) {
-      toast.error(e.message || "隧道失败");
     } finally {
       setBatchLoading(false);
     }
@@ -1568,6 +1292,7 @@ export default function ForwardPage() {
                   title={isMobile ? "长按拖拽排序" : "拖拽排序"}
                 >
                   <svg
+                    aria-hidden="true"
                     className="w-4 h-4"
                     fill="currentColor"
                     viewBox="0 0 20 20"
@@ -1621,6 +1346,7 @@ export default function ForwardPage() {
                   </div>
                   {hasMultipleAddresses(forward.inIp) && (
                     <svg
+                      aria-hidden="true"
                       className="w-3 h-3 text-default-400 flex-shrink-0"
                       fill="none"
                       stroke="currentColor"
@@ -1660,6 +1386,7 @@ export default function ForwardPage() {
                   </div>
                   {hasMultipleAddresses(forward.remoteAddr) && (
                     <svg
+                      aria-hidden="true"
                       className="w-3 h-3 text-default-400 flex-shrink-0"
                       fill="none"
                       stroke="currentColor"
@@ -1715,6 +1442,7 @@ export default function ForwardPage() {
               size="sm"
               startContent={
                 <svg
+                  aria-hidden="true"
                   className="w-3 h-3"
                   fill="currentColor"
                   viewBox="0 0 20 20"
@@ -1733,6 +1461,7 @@ export default function ForwardPage() {
               size="sm"
               startContent={
                 <svg
+                  aria-hidden="true"
                   className="w-3 h-3"
                   fill="currentColor"
                   viewBox="0 0 20 20"
@@ -1755,6 +1484,7 @@ export default function ForwardPage() {
               size="sm"
               startContent={
                 <svg
+                  aria-hidden="true"
                   className="w-3 h-3"
                   fill="currentColor"
                   viewBox="0 0 20 20"
@@ -1783,14 +1513,7 @@ export default function ForwardPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center gap-3">
-          <Spinner size="sm" />
-          <span className="text-default-600">正在加载...</span>
-        </div>
-      </div>
-    );
+    return <PageLoadingState message="正在加载..." />;
   }
 
   const userGroups = groupForwardsByUserAndTunnel();
@@ -1804,6 +1527,9 @@ export default function ForwardPage() {
           {/* 显示模式切换按钮 */}
           <Button
             isIconOnly
+            aria-label={
+              viewMode === "grouped" ? "切换到直接显示" : "切换到分类显示"
+            }
             className="text-sm"
             color="default"
             size="sm"
@@ -1812,7 +1538,12 @@ export default function ForwardPage() {
             onPress={handleViewModeChange}
           >
             {viewMode === "grouped" ? (
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <svg
+                aria-hidden="true"
+                className="w-4 h-4"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
                 <path
                   clipRule="evenodd"
                   d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2zM3 16a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2z"
@@ -1820,7 +1551,12 @@ export default function ForwardPage() {
                 />
               </svg>
             ) : (
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <svg
+                aria-hidden="true"
+                className="w-4 h-4"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
                 <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
               </svg>
             )}
@@ -1936,6 +1672,7 @@ export default function ForwardPage() {
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center flex-shrink-0">
                         <svg
+                          aria-hidden="true"
                           className="w-5 h-5 text-primary"
                           fill="currentColor"
                           viewBox="0 0 20 20"
@@ -1984,6 +1721,7 @@ export default function ForwardPage() {
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                               <div className="w-8 h-8 bg-success-100 dark:bg-success-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                                 <svg
+                                  aria-hidden="true"
                                   className="w-4 h-4 text-success"
                                   fill="none"
                                   stroke="currentColor"
@@ -2039,6 +1777,7 @@ export default function ForwardPage() {
               <div className="flex flex-col items-center gap-4">
                 <div className="w-16 h-16 bg-default-100 rounded-full flex items-center justify-center">
                   <svg
+                    aria-hidden="true"
                     className="w-8 h-8 text-default-400"
                     fill="none"
                     stroke="currentColor"
@@ -2092,6 +1831,7 @@ export default function ForwardPage() {
             <div className="flex flex-col items-center gap-4">
               <div className="w-16 h-16 bg-default-100 rounded-full flex items-center justify-center">
                 <svg
+                  aria-hidden="true"
                   className="w-8 h-8 text-default-400"
                   fill="none"
                   stroke="currentColor"
@@ -2309,7 +2049,7 @@ export default function ForwardPage() {
           <ModalHeader className="text-base">{addressModalTitle}</ModalHeader>
           <ModalBody className="pb-6">
             <div className="mb-4 text-right">
-              <Button size="sm" onClick={copyAllAddresses}>
+              <Button size="sm" onPress={copyAllAddresses}>
                 复制
               </Button>
             </div>
@@ -2327,7 +2067,7 @@ export default function ForwardPage() {
                     isLoading={item.copying}
                     size="sm"
                     variant="light"
-                    onClick={() => copyAddress(item)}
+                    onPress={() => copyAddress(item)}
                   >
                     复制
                   </Button>
@@ -2401,6 +2141,7 @@ export default function ForwardPage() {
                     size="sm"
                     startContent={
                       <svg
+                        aria-hidden="true"
                         className="w-4 h-4"
                         fill="currentColor"
                         viewBox="0 0 20 20"
@@ -2421,6 +2162,7 @@ export default function ForwardPage() {
                     size="sm"
                     startContent={
                       <svg
+                        aria-hidden="true"
                         className="w-4 h-4"
                         fill="currentColor"
                         viewBox="0 0 20 20"
@@ -2446,6 +2188,7 @@ export default function ForwardPage() {
                     size="sm"
                     startContent={
                       <svg
+                        aria-hidden="true"
                         className="w-4 h-4"
                         fill="currentColor"
                         viewBox="0 0 20 20"
@@ -2591,6 +2334,7 @@ export default function ForwardPage() {
                         <div className="flex items-center gap-2">
                           {result.success ? (
                             <svg
+                              aria-hidden="true"
                               className="w-3 h-3 text-success-600 flex-shrink-0"
                               fill="currentColor"
                               viewBox="0 0 20 20"
@@ -2603,6 +2347,7 @@ export default function ForwardPage() {
                             </svg>
                           ) : (
                             <svg
+                              aria-hidden="true"
                               className="w-3 h-3 text-danger-600 flex-shrink-0"
                               fill="currentColor"
                               viewBox="0 0 20 20"
@@ -2811,10 +2556,11 @@ export default function ForwardPage() {
                                 </thead>
                                 <tbody className="divide-y divide-divider bg-white dark:bg-gray-800">
                                   {results.map((result, index) => {
-                                    const quality = getQualityDisplay(
-                                      result.averageTime,
-                                      result.packetLoss,
-                                    );
+                                    const quality =
+                                      getForwardDiagnosisQualityDisplay(
+                                        result.averageTime,
+                                        result.packetLoss,
+                                      );
 
                                     return (
                                       <tr
@@ -2984,10 +2730,11 @@ export default function ForwardPage() {
                                 </h3>
                               </div>
                               {results.map((result, index) => {
-                                const quality = getQualityDisplay(
-                                  result.averageTime,
-                                  result.packetLoss,
-                                );
+                                const quality =
+                                  getForwardDiagnosisQualityDisplay(
+                                    result.averageTime,
+                                    result.packetLoss,
+                                  );
 
                                 return (
                                   <div
@@ -3140,6 +2887,7 @@ export default function ForwardPage() {
                   <div className="text-center py-16">
                     <div className="w-16 h-16 bg-default-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <svg
+                        aria-hidden="true"
                         className="w-8 h-8 text-default-400"
                         fill="none"
                         stroke="currentColor"
