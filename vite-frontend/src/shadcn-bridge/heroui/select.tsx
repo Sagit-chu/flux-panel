@@ -169,19 +169,120 @@ export function Select<T>({
     () => getOptions(children, items),
     [children, items],
   );
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const triggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const [dropdownStyle, setDropdownStyle] = React.useState<
+    React.CSSProperties | undefined
+  >(undefined);
   const [isExpanded, setIsExpanded] = React.useState(false);
   const selected = React.useMemo(() => toSet(selectedKeys), [selectedKeys]);
   const disabled = React.useMemo(() => toSet(disabledKeys), [disabledKeys]);
 
+  const updateDropdownPosition = React.useCallback(() => {
+    const trigger = triggerRef.current;
+
+    if (!trigger) {
+      return;
+    }
+
+    const rect = trigger.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const horizontalPadding = 8;
+    const targetWidth = Math.max(rect.width, 160);
+    const maxLeft = Math.max(
+      horizontalPadding,
+      viewportWidth - targetWidth - horizontalPadding,
+    );
+    const nextLeft = Math.min(Math.max(rect.left, horizontalPadding), maxLeft);
+
+    setDropdownStyle({
+      left: nextLeft,
+      minWidth: rect.width,
+      position: "fixed",
+      top: rect.bottom + 4,
+      width: targetWidth,
+      zIndex: 60,
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (!isExpanded) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const container = containerRef.current;
+
+      if (!container) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (container.contains(target)) {
+        return;
+      }
+
+      setIsExpanded(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsExpanded(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isExpanded]);
+
+  React.useEffect(() => {
+    if (isDisabled) {
+      setIsExpanded(false);
+    }
+  }, [isDisabled]);
+
+  React.useEffect(() => {
+    if (!isExpanded) {
+      return;
+    }
+
+    updateDropdownPosition();
+
+    const handleLayoutChange = () => {
+      updateDropdownPosition();
+    };
+
+    window.addEventListener("resize", handleLayoutChange);
+    window.addEventListener("scroll", handleLayoutChange, true);
+
+    return () => {
+      window.removeEventListener("resize", handleLayoutChange);
+      window.removeEventListener("scroll", handleLayoutChange, true);
+    };
+  }, [isExpanded, updateDropdownPosition]);
+
   const selectedArray = Array.from(selected);
   const singleValue = selectedArray[0] ?? "";
+  const selectedLabels = options
+    .filter((option) => selected.has(option.key))
+    .map((option) => option.label);
+  const resolvedSelectedValues =
+    selectedLabels.length > 0 ? selectedLabels : selectedArray;
+  const selectedFullText = resolvedSelectedValues.join("、");
   const selectedText =
-    selectedArray.length > 0
-      ? options
-          .filter((option) => selected.has(option.key))
-          .map((option) => option.label)
-          .join("、")
-      : (placeholder ?? "请选择");
+    selectedArray.length > 0 ? selectedFullText : (placeholder ?? "请选择");
 
   const updateMultipleSelection = (key: string, checked?: boolean) => {
     if (isDisabled || disabled.has(key)) {
@@ -227,6 +328,70 @@ export function Select<T>({
     onSelectionChange(new Set([event.target.value]));
   };
 
+  const renderMultipleListbox = () => {
+    if (!isExpanded) {
+      return null;
+    }
+
+    return (
+      <div
+        className="max-h-56 space-y-1 overflow-y-auto rounded-md border border-divider bg-background p-2 shadow-md"
+        id={`${generatedId}-listbox`}
+        role="listbox"
+        style={dropdownStyle}
+      >
+        {options.length === 0 ? (
+          <div
+            className={cn(
+              "px-2 py-1 text-default-500",
+              textSizeClass(size),
+            )}
+          >
+            暂无可选项
+          </div>
+        ) : (
+          options.map((option) => {
+            const optionDisabled = isDisabled || disabled.has(option.key);
+
+            return (
+              <div
+                key={option.key}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5",
+                  optionDisabled
+                    ? "cursor-not-allowed opacity-60"
+                    : "hover:bg-default-100",
+                )}
+              >
+                <BaseCheckbox
+                  checked={selected.has(option.key)}
+                  disabled={optionDisabled}
+                  onCheckedChange={(value) =>
+                    updateMultipleSelection(option.key, value === true)
+                  }
+                />
+                <button
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-left text-foreground",
+                    textSizeClass(size),
+                    optionDisabled
+                      ? "cursor-not-allowed"
+                      : "cursor-pointer",
+                  )}
+                  disabled={optionDisabled}
+                  type="button"
+                  onClick={() => updateMultipleSelection(option.key)}
+                >
+                  {option.label}
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  };
+
   return (
     <FieldContainer
       className={classNames?.base}
@@ -239,31 +404,42 @@ export function Select<T>({
     >
       {selectionMode === "multiple" ? (
         <div
+          ref={containerRef}
           className={cn(
-            "w-full overflow-hidden rounded-md border border-input bg-background shadow-sm",
-            isDisabled ? "cursor-not-allowed opacity-60" : "",
+            "relative w-full",
             className,
           )}
-          id={generatedId}
         >
           <button
             aria-controls={`${generatedId}-listbox`}
             aria-expanded={isExpanded}
+            aria-haspopup="listbox"
             className={cn(
-              "flex w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-2 text-left",
+              "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md border border-input bg-background px-3 py-2 text-left shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isDisabled ? "cursor-not-allowed opacity-60" : "",
               classNames?.trigger,
             )}
             disabled={isDisabled}
+            id={generatedId}
+            ref={triggerRef}
             type="button"
-            onClick={() => setIsExpanded((prev) => !prev)}
+            onClick={() => {
+              if (!isExpanded) {
+                updateDropdownPosition();
+              }
+
+              setIsExpanded((prev) => !prev);
+            }}
           >
             <span
               className={cn(
                 "block min-w-0 flex-1 truncate",
                 textSizeClass(size),
-                selectedArray.length > 0 ? "text-foreground" : "text-default-500",
+                selectedArray.length > 0
+                  ? "text-foreground"
+                  : "text-default-500",
               )}
-              title={selectedText}
+              title={selectedArray.length > 0 ? selectedFullText : undefined}
             >
               {selectedText}
             </span>
@@ -274,62 +450,7 @@ export function Select<T>({
               )}
             />
           </button>
-          {isExpanded ? (
-            <div
-              className="max-h-56 space-y-1 overflow-y-auto border-t border-divider p-2"
-              id={`${generatedId}-listbox`}
-              role="listbox"
-            >
-              {options.length === 0 ? (
-                <div
-                  className={cn(
-                    "px-2 py-1 text-default-500",
-                    textSizeClass(size),
-                  )}
-                >
-                  暂无可选项
-                </div>
-              ) : (
-                options.map((option) => {
-                  const optionDisabled = isDisabled || disabled.has(option.key);
-
-                  return (
-                    <div
-                      key={option.key}
-                      className={cn(
-                        "flex items-center gap-2 rounded-md px-2 py-1.5",
-                        optionDisabled
-                          ? "cursor-not-allowed opacity-60"
-                          : "hover:bg-default-100",
-                      )}
-                    >
-                      <BaseCheckbox
-                        checked={selected.has(option.key)}
-                        disabled={optionDisabled}
-                        onCheckedChange={(value) =>
-                          updateMultipleSelection(option.key, value === true)
-                        }
-                      />
-                      <button
-                        className={cn(
-                          "min-w-0 flex-1 truncate text-left text-foreground",
-                          textSizeClass(size),
-                          optionDisabled
-                            ? "cursor-not-allowed"
-                            : "cursor-pointer",
-                        )}
-                        disabled={optionDisabled}
-                        type="button"
-                        onClick={() => updateMultipleSelection(option.key)}
-                      >
-                        {option.label}
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          ) : null}
+          {renderMultipleListbox()}
         </div>
       ) : (
         <select

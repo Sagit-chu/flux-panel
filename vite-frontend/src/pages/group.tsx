@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+
 import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
 import { Button } from "@/shadcn-bridge/heroui/button";
 import { Input } from "@/shadcn-bridge/heroui/input";
@@ -21,8 +23,6 @@ import {
 } from "@/shadcn-bridge/heroui/table";
 import { Chip } from "@/shadcn-bridge/heroui/chip";
 import { Spinner } from "@/shadcn-bridge/heroui/spinner";
-import toast from "react-hot-toast";
-
 import {
   assignGroupPermission,
   assignTunnelsToGroup,
@@ -172,6 +172,22 @@ export default function GroupPage() {
 
     return map;
   }, [users]);
+
+  const selectedTunnelSummary = useMemo(() => {
+    const value = Array.from(selectedTunnelKeys)
+      .map((id) => tunnelNameMap.get(Number(id)) || id)
+      .join("、");
+
+    return value || "无";
+  }, [selectedTunnelKeys, tunnelNameMap]);
+
+  const selectedUserSummary = useMemo(() => {
+    const value = Array.from(selectedUserKeys)
+      .map((id) => userNameMap.get(Number(id)) || id)
+      .join("、");
+
+    return value || "无";
+  }, [selectedUserKeys, userNameMap]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -779,11 +795,11 @@ export default function GroupPage() {
             >
               {(item) => <SelectItem key={item.id}>{item.name}</SelectItem>}
             </Select>
-            <p className="text-xs text-default-500 break-all whitespace-normal">
-              当前已选：
-              {Array.from(selectedTunnelKeys)
-                .map((id) => tunnelNameMap.get(Number(id)) || id)
-                .join("、") || "无"}
+            <p
+              className="text-xs text-default-500 truncate"
+              title={`当前已选：${selectedTunnelSummary}`}
+            >
+              当前已选：{selectedTunnelSummary}
             </p>
             <p className="text-xs text-default-500">
               不选择任何隧道并保存将清空该分组成员。
@@ -824,11 +840,11 @@ export default function GroupPage() {
             >
               {(item) => <SelectItem key={item.id}>{item.user}</SelectItem>}
             </Select>
-            <p className="text-xs text-default-500 break-all whitespace-normal">
-              当前已选：
-              {Array.from(selectedUserKeys)
-                .map((id) => userNameMap.get(Number(id)) || id)
-                .join("、") || "无"}
+            <p
+              className="text-xs text-default-500 truncate"
+              title={`当前已选：${selectedUserSummary}`}
+            >
+              当前已选：{selectedUserSummary}
             </p>
             <p className="text-xs text-default-500">
               不选择任何用户并保存将清空该分组成员。
