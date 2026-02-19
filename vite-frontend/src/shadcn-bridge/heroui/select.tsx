@@ -1,8 +1,10 @@
 import * as React from "react";
-
-import { cn } from "@/lib/utils";
+import { ChevronDownIcon } from "lucide-react";
 
 import { FieldContainer, extractText, type FieldMetaProps } from "./shared";
+
+import { Checkbox as BaseCheckbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 
 type SelectionMode = "single" | "multiple";
 
@@ -131,6 +133,17 @@ function sizeClass(size: SelectProps["size"]) {
   return "h-9 text-sm";
 }
 
+function textSizeClass(size: SelectProps["size"]) {
+  if (size === "sm") {
+    return "text-xs";
+  }
+  if (size === "lg") {
+    return "text-base";
+  }
+
+  return "text-sm";
+}
+
 export function Select<T>({
   children,
   className,
@@ -152,12 +165,41 @@ export function Select<T>({
   size,
 }: SelectProps<T>) {
   const generatedId = React.useId();
-  const options = React.useMemo(() => getOptions(children, items), [children, items]);
+  const options = React.useMemo(
+    () => getOptions(children, items),
+    [children, items],
+  );
+  const [isExpanded, setIsExpanded] = React.useState(false);
   const selected = React.useMemo(() => toSet(selectedKeys), [selectedKeys]);
   const disabled = React.useMemo(() => toSet(disabledKeys), [disabledKeys]);
 
   const selectedArray = Array.from(selected);
   const singleValue = selectedArray[0] ?? "";
+  const selectedText =
+    selectedArray.length > 0
+      ? options
+          .filter((option) => selected.has(option.key))
+          .map((option) => option.label)
+          .join("、")
+      : (placeholder ?? "请选择");
+
+  const updateMultipleSelection = (key: string, checked?: boolean) => {
+    if (isDisabled || disabled.has(key)) {
+      return;
+    }
+
+    const next = new Set(selected);
+    const shouldSelect =
+      typeof checked === "boolean" ? checked : !next.has(key);
+
+    if (shouldSelect) {
+      next.add(key);
+    } else {
+      next.delete(key);
+    }
+
+    onSelectionChange?.(next);
+  };
 
   const handleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     onChange?.(event);
@@ -167,7 +209,9 @@ export function Select<T>({
     }
 
     if (selectionMode === "multiple") {
-      const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+      const values = Array.from(event.target.selectedOptions).map(
+        (option) => option.value,
+      );
 
       onSelectionChange(new Set(values));
 
@@ -193,31 +237,127 @@ export function Select<T>({
       isRequired={isRequired}
       label={label}
     >
-      <select
-        className={cn(
-          "w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          sizeClass(size),
-          selectionMode === "multiple" ? "min-h-32" : "",
-          classNames?.trigger,
-          className,
-        )}
-        disabled={isDisabled}
-        id={generatedId}
-        multiple={selectionMode === "multiple"}
-        required={isRequired}
-        value={selectionMode === "multiple" ? selectedArray : singleValue}
-        onClick={onClick}
-        onChange={handleChange}
-      >
-        {selectionMode === "single" ? (
+      {selectionMode === "multiple" ? (
+        <div
+          className={cn(
+            "w-full rounded-md border border-input bg-background shadow-sm",
+            isDisabled ? "cursor-not-allowed opacity-60" : "",
+            className,
+          )}
+          id={generatedId}
+        >
+          <button
+            aria-controls={`${generatedId}-listbox`}
+            aria-expanded={isExpanded}
+            className={cn(
+              "flex w-full items-center gap-2 px-3 py-2 text-left",
+              classNames?.trigger,
+            )}
+            disabled={isDisabled}
+            type="button"
+            onClick={() => setIsExpanded((prev) => !prev)}
+          >
+            <span
+              className={cn(
+                "block flex-1 truncate",
+                textSizeClass(size),
+                selectedArray.length > 0 ? "text-foreground" : "text-default-500",
+              )}
+              title={selectedText}
+            >
+              {selectedText}
+            </span>
+            <ChevronDownIcon
+              className={cn(
+                "h-4 w-4 flex-shrink-0 text-default-500 transition-transform",
+                isExpanded ? "rotate-180" : "rotate-0",
+              )}
+            />
+          </button>
+          {isExpanded ? (
+            <div
+              className="max-h-56 space-y-1 overflow-y-auto border-t border-divider p-2"
+              id={`${generatedId}-listbox`}
+              role="listbox"
+            >
+              {options.length === 0 ? (
+                <div
+                  className={cn(
+                    "px-2 py-1 text-default-500",
+                    textSizeClass(size),
+                  )}
+                >
+                  暂无可选项
+                </div>
+              ) : (
+                options.map((option) => {
+                  const optionDisabled = isDisabled || disabled.has(option.key);
+
+                  return (
+                    <div
+                      key={option.key}
+                      className={cn(
+                        "flex items-center gap-2 rounded-md px-2 py-1.5",
+                        optionDisabled
+                          ? "cursor-not-allowed opacity-60"
+                          : "hover:bg-default-100",
+                      )}
+                    >
+                      <BaseCheckbox
+                        checked={selected.has(option.key)}
+                        disabled={optionDisabled}
+                        onCheckedChange={(value) =>
+                          updateMultipleSelection(option.key, value === true)
+                        }
+                      />
+                      <button
+                        className={cn(
+                          "min-w-0 flex-1 truncate text-left text-foreground",
+                          textSizeClass(size),
+                          optionDisabled
+                            ? "cursor-not-allowed"
+                            : "cursor-pointer",
+                        )}
+                        disabled={optionDisabled}
+                        type="button"
+                        onClick={() => updateMultipleSelection(option.key)}
+                      >
+                        {option.label}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <select
+          className={cn(
+            "w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            sizeClass(size),
+            classNames?.trigger,
+            className,
+          )}
+          disabled={isDisabled}
+          id={generatedId}
+          required={isRequired}
+          value={singleValue}
+          onChange={handleChange}
+          onClick={onClick}
+        >
           <option value="">{placeholder ?? "请选择"}</option>
-        ) : null}
-        {options.map((option) => (
-          <option key={option.key} disabled={disabled.has(option.key)} value={option.key}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+          {options.map((option) => (
+            <option
+              key={option.key}
+              disabled={disabled.has(option.key)}
+              value={option.key}
+            >
+              {option.label}
+            </option>
+          ))}
+        </select>
+      )}
     </FieldContainer>
   );
 }
