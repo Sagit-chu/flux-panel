@@ -1,17 +1,16 @@
 import { useState, useEffect } from "react";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Input } from "@/shadcn-bridge/heroui/input";
+import { Select, SelectItem } from "@/shadcn-bridge/heroui/select";
 import {
   Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalFooter,
-} from "@heroui/modal";
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
+} from "@/shadcn-bridge/heroui/modal";
+import { Chip } from "@/shadcn-bridge/heroui/chip";
 import toast from "react-hot-toast";
 
 import {
@@ -21,6 +20,7 @@ import {
   deleteSpeedLimit,
   getTunnelList,
 } from "@/api";
+import { PageLoadingState } from "@/components/page-state";
 
 interface SpeedLimitRule {
   id: number;
@@ -188,7 +188,7 @@ export default function LimitPage() {
 
     setSubmitLoading(true);
     try {
-      let res;
+      let res: { code: number; msg: string };
 
       if (isEdit) {
         res = await updateSpeedLimit(form);
@@ -215,14 +215,7 @@ export default function LimitPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center gap-3">
-          <Spinner size="sm" />
-          <span className="text-default-600">正在加载...</span>
-        </div>
-      </div>
-    );
+    return <PageLoadingState message="正在加载..." />;
   }
 
   return (
@@ -293,6 +286,7 @@ export default function LimitPage() {
                     size="sm"
                     startContent={
                       <svg
+                        aria-hidden="true"
                         className="w-4 h-4"
                         fill="currentColor"
                         viewBox="0 0 20 20"
@@ -311,6 +305,7 @@ export default function LimitPage() {
                     size="sm"
                     startContent={
                       <svg
+                        aria-hidden="true"
                         className="w-4 h-4"
                         fill="currentColor"
                         viewBox="0 0 20 20"
@@ -344,6 +339,7 @@ export default function LimitPage() {
             <div className="flex flex-col items-center gap-4">
               <div className="w-16 h-16 bg-default-100 rounded-full flex items-center justify-center">
                 <svg
+                  aria-hidden="true"
                   className="w-8 h-8 text-default-400"
                   fill="none"
                   stroke="currentColor"

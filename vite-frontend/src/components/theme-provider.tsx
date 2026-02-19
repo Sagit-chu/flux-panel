@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { useTheme } from "@heroui/use-theme";
+import { useTheme } from "@/shadcn-bridge/heroui/use-theme";
 
 interface ThemeProviderProps {
   children: React.ReactNode;

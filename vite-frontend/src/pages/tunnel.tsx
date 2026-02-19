@@ -1,20 +1,20 @@
 import { useState, useEffect, useMemo } from "react";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Input, Textarea } from "@/shadcn-bridge/heroui/input";
+import { Select, SelectItem } from "@/shadcn-bridge/heroui/select";
 import {
   Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalFooter,
-} from "@heroui/modal";
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
-import { Divider } from "@heroui/divider";
-import { Alert } from "@heroui/alert";
-import { Checkbox } from "@heroui/checkbox";
+} from "@/shadcn-bridge/heroui/modal";
+import { Chip } from "@/shadcn-bridge/heroui/chip";
+import { Spinner } from "@/shadcn-bridge/heroui/spinner";
+import { Divider } from "@/shadcn-bridge/heroui/divider";
+import { Alert } from "@/shadcn-bridge/heroui/alert";
+import { Checkbox } from "@/shadcn-bridge/heroui/checkbox";
 import toast from "react-hot-toast";
 import {
   DndContext,
@@ -45,6 +45,20 @@ import {
   batchDeleteTunnels,
   batchRedeployTunnels,
 } from "@/api";
+import { PageLoadingState } from "@/components/page-state";
+import {
+  buildDiagnosisFallbackResult,
+  getDiagnosisQualityDisplay,
+  type DiagnosisResult,
+} from "@/pages/tunnel/diagnosis";
+import {
+  createTunnelFormDefaults,
+  getTunnelFlowDisplay,
+  getTunnelTypeDisplay,
+  validateTunnelForm,
+} from "@/pages/tunnel/form";
+import { loadStoredOrder, saveOrder } from "@/utils/order-storage";
+import { extractApiErrorMessage } from "@/api/error-message";
 
 interface ChainTunnel {
   nodeId: number;
@@ -92,27 +106,6 @@ interface TunnelForm {
   status: number;
 }
 
-interface DiagnosisResult {
-  tunnelName: string;
-  tunnelType: string;
-  timestamp: number;
-  results: Array<{
-    success: boolean;
-    description: string;
-    nodeName: string;
-    nodeId: string;
-    targetIp: string;
-    targetPort?: number;
-    message?: string;
-    averageTime?: number;
-    packetLoss?: number;
-    fromChainType?: number; // 1: 入口, 2: 链, 3: 出口
-    fromInx?: number;
-    toChainType?: number;
-    toInx?: number;
-  }>;
-}
-
 export default function TunnelPage() {
   const [loading, setLoading] = useState(true);
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
@@ -134,18 +127,7 @@ export default function TunnelPage() {
     useState<DiagnosisResult | null>(null);
 
   // 表单状态
-  const [form, setForm] = useState<TunnelForm>({
-    name: "",
-    type: 1,
-    inNodeId: [],
-    outNodeId: [],
-    chainNodes: [],
-    flow: 1,
-    trafficRatio: 1.0,
-    inIp: "",
-    ipPreference: "",
-    status: 1,
-  });
+  const [form, setForm] = useState<TunnelForm>(createTunnelFormDefaults());
 
   // 表单验证错误
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -189,32 +171,12 @@ export default function TunnelPage() {
 
           setTunnelOrder(dbOrder);
         } else {
-          try {
-            const stored = localStorage.getItem("tunnel-order");
-
-            if (stored) {
-              const parsed = JSON.parse(stored);
-
-              if (Array.isArray(parsed)) {
-                const existingIds = new Set(tunnelsData.map((t) => t.id));
-                const validOrder = parsed
-                  .map((id: any) => Number(id))
-                  .filter((id: number) => existingIds.has(id));
-
-                if (validOrder.length > 0) {
-                  setTunnelOrder(validOrder);
-                } else {
-                  setTunnelOrder(tunnelsData.map((t) => t.id));
-                }
-              } else {
-                setTunnelOrder(tunnelsData.map((t) => t.id));
-              }
-            } else {
-              setTunnelOrder(tunnelsData.map((t) => t.id));
-            }
-          } catch {
-            setTunnelOrder(tunnelsData.map((t) => t.id));
-          }
+          setTunnelOrder(
+            loadStoredOrder(
+              "tunnel-order",
+              tunnelsData.map((t) => t.id),
+            ),
+          );
         }
       } else {
         toast.error(tunnelsRes.msg || "获取隧道列表失败");
@@ -233,59 +195,7 @@ export default function TunnelPage() {
 
   // 表单验证
   const validateForm = (): boolean => {
-    const newErrors: { [key: string]: string } = {};
-
-    if (!form.name.trim()) {
-      newErrors.name = "请输入隧道名称";
-    } else if (form.name.length < 2 || form.name.length > 50) {
-      newErrors.name = "隧道名称长度应在2-50个字符之间";
-    }
-
-    if (!form.inNodeId || form.inNodeId.length === 0) {
-      newErrors.inNodeId = "请至少选择一个入口节点";
-    } else {
-      // 验证所有选择的节点都在线
-      const offlineNodes = form.inNodeId.filter((item) => {
-        const node = nodes.find((n) => n.id === item.nodeId);
-
-        return node && node.status !== 1;
-      });
-
-      if (offlineNodes.length > 0) {
-        newErrors.inNodeId = "所有入口节点必须在线";
-      }
-    }
-
-    if (form.trafficRatio <= 0 || form.trafficRatio > 100.0) {
-      newErrors.trafficRatio = "流量倍率须大于0，支持小数（如 0.5）";
-    }
-
-    // 隧道转发时的验证
-    if (form.type === 2) {
-      if (!form.outNodeId || form.outNodeId.length === 0) {
-        newErrors.outNodeId = "请至少选择一个出口节点";
-      } else {
-        // 验证所有选择的节点都在线
-        const offlineNodes = form.outNodeId.filter((item) => {
-          const node = nodes.find((n) => n.id === item.nodeId);
-
-          return node && node.status !== 1;
-        });
-
-        if (offlineNodes.length > 0) {
-          newErrors.outNodeId = "所有出口节点必须在线";
-        }
-
-        // 检查是否有重复节点
-        const inNodeIds = form.inNodeId.map((item) => item.nodeId);
-        const outNodeIds = form.outNodeId.map((item) => item.nodeId);
-        const overlap = inNodeIds.filter((id) => outNodeIds.includes(id));
-
-        if (overlap.length > 0) {
-          newErrors.outNodeId = "隧道转发模式下，入口和出口不能有相同节点";
-        }
-      }
-    }
+    const newErrors = validateTunnelForm(form, nodes);
 
     setErrors(newErrors);
 
@@ -295,18 +205,7 @@ export default function TunnelPage() {
   // 新增隧道
   const handleAdd = () => {
     setIsEdit(false);
-    setForm({
-      name: "",
-      type: 1,
-      inNodeId: [],
-      outNodeId: [],
-      chainNodes: [],
-      flow: 1,
-      trafficRatio: 1.0,
-      inIp: "",
-      ipPreference: "",
-      status: 1,
-    });
+    setForm(createTunnelFormDefaults());
     setErrors({});
     setModalOpen(true);
   };
@@ -317,22 +216,22 @@ export default function TunnelPage() {
 
     // 直接使用列表数据，getAllTunnels 已经包含完整的节点信息
     setForm({
-    id: tunnel.id,
-    name: tunnel.name,
-    type: tunnel.type,
-    inNodeId: tunnel.inNodeId || [],
-    outNodeId: tunnel.outNodeId || [],
-    chainNodes: tunnel.chainNodes || [],
-    flow: tunnel.flow,
-    trafficRatio: tunnel.trafficRatio,
-    inIp: tunnel.inIp
-      ? tunnel.inIp
-          .split(",")
-          .map((ip: string) => ip.trim())
-          .join("\n")
-      : "",
-    ipPreference: tunnel.ipPreference || "",
-    status: tunnel.status,
+      id: tunnel.id,
+      name: tunnel.name,
+      type: tunnel.type,
+      inNodeId: tunnel.inNodeId || [],
+      outNodeId: tunnel.outNodeId || [],
+      chainNodes: tunnel.chainNodes || [],
+      flow: tunnel.flow,
+      trafficRatio: tunnel.trafficRatio,
+      inIp: tunnel.inIp
+        ? tunnel.inIp
+            .split(",")
+            .map((ip: string) => ip.trim())
+            .join("\n")
+        : "",
+      ipPreference: tunnel.ipPreference || "",
+      status: tunnel.status,
     });
     setErrors({});
     setModalOpen(true);
@@ -518,89 +417,31 @@ export default function TunnelPage() {
       const response = await diagnoseTunnel(tunnel.id);
 
       if (response.code === 0) {
-        setDiagnosisResult(response.data);
+        setDiagnosisResult(response.data as DiagnosisResult);
       } else {
         toast.error(response.msg || "诊断失败");
-        setDiagnosisResult({
-          tunnelName: tunnel.name,
-          tunnelType: tunnel.type === 1 ? "端口转发" : "隧道转发",
-          timestamp: Date.now(),
-          results: [
-            {
-              success: false,
-              description: "诊断失败",
-              nodeName: "-",
-              nodeId: "-",
-              targetIp: "-",
-              targetPort: 443,
-              message: response.msg || "诊断过程中发生错误",
-            },
-          ],
-        });
+        setDiagnosisResult(
+          buildDiagnosisFallbackResult({
+            tunnelName: tunnel.name,
+            tunnelType: tunnel.type,
+            description: "诊断失败",
+            message: response.msg || "诊断过程中发生错误",
+          }),
+        );
       }
     } catch {
       toast.error("网络错误，请重试");
-      setDiagnosisResult({
-        tunnelName: tunnel.name,
-        tunnelType: tunnel.type === 1 ? "端口转发" : "隧道转发",
-        timestamp: Date.now(),
-        results: [
-          {
-            success: false,
-            description: "网络错误",
-            nodeName: "-",
-            nodeId: "-",
-            targetIp: "-",
-            targetPort: 443,
-            message: "无法连接到服务器",
-          },
-        ],
-      });
+      setDiagnosisResult(
+        buildDiagnosisFallbackResult({
+          tunnelName: tunnel.name,
+          tunnelType: tunnel.type,
+          description: "网络错误",
+          message: "无法连接到服务器",
+        }),
+      );
     } finally {
       setDiagnosisLoading(false);
     }
-  };
-
-  // 获取类型显示
-  const getTypeDisplay = (type: number) => {
-    switch (type) {
-      case 1:
-        return { text: "端口转发", color: "primary" };
-      case 2:
-        return { text: "隧道转发", color: "secondary" };
-      default:
-        return { text: "未知", color: "default" };
-    }
-  };
-
-  // 获取流量计算显示
-  const getFlowDisplay = (flow: number) => {
-    switch (flow) {
-      case 1:
-        return "单向计算";
-      case 2:
-        return "双向计算";
-      default:
-        return "未知";
-    }
-  };
-
-  // 获取连接质量
-  const getQualityDisplay = (averageTime?: number, packetLoss?: number) => {
-    if (averageTime === undefined || packetLoss === undefined) return null;
-
-    if (averageTime < 30 && packetLoss === 0)
-      return { text: "🚀 优秀", color: "success" };
-    if (averageTime < 50 && packetLoss === 0)
-      return { text: "✨ 很好", color: "success" };
-    if (averageTime < 100 && packetLoss < 1)
-      return { text: "👍 良好", color: "primary" };
-    if (averageTime < 150 && packetLoss < 2)
-      return { text: "😐 一般", color: "warning" };
-    if (averageTime < 200 && packetLoss < 5)
-      return { text: "😟 较差", color: "warning" };
-
-    return { text: "😵 很差", color: "danger" };
   };
 
   // 处理拖拽结束
@@ -624,10 +465,7 @@ export default function TunnelPage() {
 
     setTunnelOrder(newOrder);
 
-    // 保存到 localStorage
-    try {
-      localStorage.setItem("tunnel-order", JSON.stringify(newOrder));
-    } catch {}
+    saveOrder("tunnel-order", newOrder);
 
     // 持久化到数据库
     try {
@@ -701,8 +539,8 @@ export default function TunnelPage() {
       } else {
         toast.error(res.msg || "删除失败");
       }
-    } catch (e: any) {
-      toast.error(e.message || "删除失败");
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "删除失败"));
     } finally {
       setBatchLoading(false);
     }
@@ -730,8 +568,8 @@ export default function TunnelPage() {
       } else {
         toast.error(res.msg || "下发失败");
       }
-    } catch (e: any) {
-      toast.error(e.message || "下发失败");
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "下发失败"));
     } finally {
       setBatchLoading(false);
     }
@@ -829,14 +667,7 @@ export default function TunnelPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center gap-3">
-          <Spinner size="sm" />
-          <span className="text-default-600">正在加载...</span>
-        </div>
-      </div>
-    );
+    return <PageLoadingState message="正在加载..." />;
   }
 
   return (
@@ -902,7 +733,7 @@ export default function TunnelPage() {
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
               {sortedTunnels.map((tunnel) => {
-                const typeDisplay = getTypeDisplay(tunnel.type);
+                const typeDisplay = getTunnelTypeDisplay(tunnel.type);
 
                 return (
                   <SortableItem key={tunnel.id} id={tunnel.id}>
@@ -942,6 +773,7 @@ export default function TunnelPage() {
                               title="拖拽排序"
                             >
                               <svg
+                                aria-hidden="true"
                                 className="w-4 h-4"
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
@@ -960,6 +792,7 @@ export default function TunnelPage() {
                                 {/* 入口节点 */}
                                 <div className="flex items-center gap-1 px-2 py-1 bg-primary-50 dark:bg-primary-100/20 rounded border border-primary-200 dark:border-primary-300/20">
                                   <svg
+                                    aria-hidden="true"
                                     className="w-3 h-3 text-primary-600"
                                     fill="currentColor"
                                     viewBox="0 0 20 20"
@@ -977,6 +810,7 @@ export default function TunnelPage() {
 
                                 {/* 箭头 */}
                                 <svg
+                                  aria-hidden="true"
                                   className="w-4 h-4 text-default-400"
                                   fill="none"
                                   stroke="currentColor"
@@ -993,6 +827,7 @@ export default function TunnelPage() {
                                 {/* 转发链 */}
                                 <div className="flex items-center gap-1 px-2 py-1 bg-secondary-50 dark:bg-secondary-100/20 rounded border border-secondary-200 dark:border-secondary-300/20">
                                   <svg
+                                    aria-hidden="true"
                                     className="w-3 h-3 text-secondary-600"
                                     fill="currentColor"
                                     viewBox="0 0 20 20"
@@ -1013,6 +848,7 @@ export default function TunnelPage() {
 
                                 {/* 箭头 */}
                                 <svg
+                                  aria-hidden="true"
                                   className="w-4 h-4 text-default-400"
                                   fill="none"
                                   stroke="currentColor"
@@ -1029,6 +865,7 @@ export default function TunnelPage() {
                                 {/* 出口节点 */}
                                 <div className="flex items-center gap-1 px-2 py-1 bg-success-50 dark:bg-success-100/20 rounded border border-success-200 dark:border-success-300/20">
                                   <svg
+                                    aria-hidden="true"
                                     className="w-3 h-3 text-success-600"
                                     fill="currentColor"
                                     viewBox="0 0 20 20"
@@ -1050,13 +887,15 @@ export default function TunnelPage() {
                             </div>
 
                             {/* 流量配置 */}
-                            <div className={`grid gap-2 ${tunnel.type === 2 && tunnel.ipPreference ? "grid-cols-3" : "grid-cols-2"}`}>
+                            <div
+                              className={`grid gap-2 ${tunnel.type === 2 && tunnel.ipPreference ? "grid-cols-3" : "grid-cols-2"}`}
+                            >
                               <div className="text-center p-1.5 bg-default-50 dark:bg-default-100/30 rounded">
                                 <div className="text-xs text-default-500">
                                   流量计算
                                 </div>
                                 <div className="text-sm font-semibold text-foreground mt-0.5">
-                                  {getFlowDisplay(tunnel.flow)}
+                                  {getTunnelFlowDisplay(tunnel.flow)}
                                 </div>
                               </div>
                               <div className="text-center p-1.5 bg-default-50 dark:bg-default-100/30 rounded">
@@ -1073,7 +912,9 @@ export default function TunnelPage() {
                                     连接偏好
                                   </div>
                                   <div className="text-sm font-semibold text-foreground mt-0.5">
-                                    {tunnel.ipPreference === "v4" ? "IPv4" : "IPv6"}
+                                    {tunnel.ipPreference === "v4"
+                                      ? "IPv4"
+                                      : "IPv6"}
                                   </div>
                                 </div>
                               )}
@@ -1087,6 +928,7 @@ export default function TunnelPage() {
                               size="sm"
                               startContent={
                                 <svg
+                                  aria-hidden="true"
                                   className="w-3 h-3"
                                   fill="currentColor"
                                   viewBox="0 0 20 20"
@@ -1105,6 +947,7 @@ export default function TunnelPage() {
                               size="sm"
                               startContent={
                                 <svg
+                                  aria-hidden="true"
                                   className="w-3 h-3"
                                   fill="currentColor"
                                   viewBox="0 0 20 20"
@@ -1127,6 +970,7 @@ export default function TunnelPage() {
                               size="sm"
                               startContent={
                                 <svg
+                                  aria-hidden="true"
                                   className="w-3 h-3"
                                   fill="currentColor"
                                   viewBox="0 0 20 20"
@@ -1165,6 +1009,7 @@ export default function TunnelPage() {
             <div className="flex flex-col items-center gap-4">
               <div className="w-16 h-16 bg-default-100 rounded-full flex items-center justify-center">
                 <svg
+                  aria-hidden="true"
                   className="w-8 h-8 text-default-400"
                   fill="none"
                   stroke="currentColor"
@@ -1280,11 +1125,11 @@ export default function TunnelPage() {
                       errorMessage={errors.trafficRatio}
                       isInvalid={!!errors.trafficRatio}
                       label="流量倍率"
-                      placeholder="例如：0.5 或 1 或 2"
-                      type="number"
-                      step="any"
-                      min={0.01}
                       max={100}
+                      min={0.01}
+                      placeholder="例如：0.5 或 1 或 2"
+                      step="any"
+                      type="number"
                       value={form.trafficRatio.toString()}
                       variant="bordered"
                       onChange={(e) =>
@@ -1418,6 +1263,7 @@ export default function TunnelPage() {
                           size="sm"
                           startContent={
                             <svg
+                              aria-hidden="true"
                               className="w-4 h-4"
                               fill="none"
                               stroke="currentColor"
@@ -1477,12 +1323,14 @@ export default function TunnelPage() {
                                   </span>
                                   <Button
                                     isIconOnly
+                                    aria-label={`删除第${groupIndex + 1}跳`}
                                     color="danger"
                                     size="sm"
                                     variant="light"
                                     onPress={() => removeChainNode(groupIndex)}
                                   >
                                     <svg
+                                      aria-hidden="true"
                                       className="w-4 h-4"
                                       fill="none"
                                       stroke="currentColor"
@@ -1555,17 +1403,17 @@ export default function TunnelPage() {
                                           );
 
                                         // 添加新节点
-                                        addedIds.forEach((nodeId) =>
-                                          addNodeToChain(groupIndex, nodeId),
-                                        );
+                                        addedIds.forEach((nodeId) => {
+                                          addNodeToChain(groupIndex, nodeId);
+                                        });
 
                                         // 删除取消选择的节点
-                                        removedIds.forEach((nodeId) =>
+                                        removedIds.forEach((nodeId) => {
                                           removeNodeFromChain(
                                             groupIndex,
                                             nodeId,
-                                          ),
-                                        );
+                                          );
+                                        });
                                       }}
                                     >
                                       {nodes.map((node) => (
@@ -2189,7 +2037,7 @@ export default function TunnelPage() {
                                 </thead>
                                 <tbody className="divide-y divide-divider bg-white dark:bg-gray-800">
                                   {results.map((result, index) => {
-                                    const quality = getQualityDisplay(
+                                    const quality = getDiagnosisQualityDisplay(
                                       result.averageTime,
                                       result.packetLoss,
                                     );
@@ -2362,7 +2210,7 @@ export default function TunnelPage() {
                                 </h3>
                               </div>
                               {results.map((result, index) => {
-                                const quality = getQualityDisplay(
+                                const quality = getDiagnosisQualityDisplay(
                                   result.averageTime,
                                   result.packetLoss,
                                 );
@@ -2518,6 +2366,7 @@ export default function TunnelPage() {
                   <div className="text-center py-16">
                     <div className="w-16 h-16 bg-default-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <svg
+                        aria-hidden="true"
                         className="w-8 h-8 text-default-400"
                         fill="none"
                         stroke="currentColor"

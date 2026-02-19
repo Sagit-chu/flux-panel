@@ -1,9 +1,10 @@
 import React from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Button } from "@heroui/button";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/shadcn-bridge/heroui/button";
 
 import { Logo } from "@/components/icons";
 import { siteConfig } from "@/config/site";
+import { useScrollTopOnPathChange } from "@/hooks/useScrollTopOnPathChange";
 
 export default function H5SimpleLayout({
   children,
@@ -11,18 +12,8 @@ export default function H5SimpleLayout({
   children: React.ReactNode;
 }) {
   const navigate = useNavigate();
-  const location = useLocation();
 
-  // 路由切换时回到顶部，避免上一页滚动位置保留
-  React.useEffect(() => {
-    try {
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    } catch {
-      window.scrollTo(0, 0);
-    }
-    document.body.scrollTop = 0;
-    document.documentElement.scrollTop = 0;
-  }, [location.pathname]);
+  useScrollTopOnPathChange();
 
   const handleBack = () => {
     navigate("/profile");

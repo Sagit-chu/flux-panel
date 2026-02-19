@@ -1,18 +1,10 @@
-import type { NavigateOptions } from "react-router-dom";
-
 import * as React from "react";
-import { HeroUIProvider } from "@heroui/system";
+import { HeroUIProvider } from "@/shadcn-bridge/heroui/system";
 import { useHref, useNavigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { I18nProvider } from "@react-aria/i18n";
 
 import { ThemeProvider } from "@/components/theme-provider";
-
-declare module "@react-types/shared" {
-  interface RouterConfig {
-    routerOptions: NavigateOptions;
-  }
-}
 
 export interface ProvidersProps {
   children: React.ReactNode;

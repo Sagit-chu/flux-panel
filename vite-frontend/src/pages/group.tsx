@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Input } from "@/shadcn-bridge/heroui/input";
 import {
   Modal,
   ModalBody,
@@ -9,8 +9,8 @@ import {
   ModalFooter,
   ModalHeader,
   useDisclosure,
-} from "@heroui/modal";
-import { Select, SelectItem } from "@heroui/select";
+} from "@/shadcn-bridge/heroui/modal";
+import { Select, SelectItem } from "@/shadcn-bridge/heroui/select";
 import {
   Table,
   TableBody,
@@ -18,9 +18,9 @@ import {
   TableColumn,
   TableHeader,
   TableRow,
-} from "@heroui/table";
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
+} from "@/shadcn-bridge/heroui/table";
+import { Chip } from "@/shadcn-bridge/heroui/chip";
+import { Spinner } from "@/shadcn-bridge/heroui/spinner";
 import toast from "react-hot-toast";
 
 import {
@@ -40,6 +40,7 @@ import {
   updateTunnelGroup,
   updateUserGroup,
 } from "@/api";
+import { getAdminFlag } from "@/utils/session";
 
 interface TunnelItem {
   id: number;
@@ -86,22 +87,9 @@ const formatDate = (timestamp?: number): string => {
   return new Date(timestamp).toLocaleString();
 };
 
-const isAdminUser = () => {
-  let adminFlag = localStorage.getItem("admin") === "true";
-
-  if (localStorage.getItem("admin") === null) {
-    const roleId = parseInt(localStorage.getItem("role_id") || "1", 10);
-
-    adminFlag = roleId === 0;
-    localStorage.setItem("admin", adminFlag.toString());
-  }
-
-  return adminFlag;
-};
-
 export default function GroupPage() {
   const [loading, setLoading] = useState(true);
-  const [isAdmin] = useState(isAdminUser());
+  const [isAdmin] = useState(getAdminFlag());
 
   const [tunnelGroups, setTunnelGroups] = useState<TunnelGroup[]>([]);
   const [userGroups, setUserGroups] = useState<UserGroup[]>([]);
@@ -198,19 +186,25 @@ export default function GroupPage() {
         ]);
 
       if (tunnelGroupRes.code === 0) {
-        setTunnelGroups(tunnelGroupRes.data || []);
+        setTunnelGroups(
+          Array.isArray(tunnelGroupRes.data) ? tunnelGroupRes.data : [],
+        );
       }
       if (userGroupRes.code === 0) {
-        setUserGroups(userGroupRes.data || []);
+        setUserGroups(
+          Array.isArray(userGroupRes.data) ? userGroupRes.data : [],
+        );
       }
       if (permissionRes.code === 0) {
-        setPermissions(permissionRes.data || []);
+        setPermissions(
+          Array.isArray(permissionRes.data) ? permissionRes.data : [],
+        );
       }
       if (tunnelRes.code === 0) {
-        setTunnels(tunnelRes.data || []);
+        setTunnels(Array.isArray(tunnelRes.data) ? tunnelRes.data : []);
       }
       if (userRes.code === 0) {
-        setUsers(userRes.data || []);
+        setUsers(Array.isArray(userRes.data) ? userRes.data : []);
       }
 
       if (
