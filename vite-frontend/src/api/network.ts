@@ -1,6 +1,11 @@
 import axios, { AxiosResponse } from "axios";
 
+import {
+  extractApiErrorMessage,
+  isUnauthorizedError,
+} from "@/api/error-message";
 import { getPanelAddresses, isWebViewFunc } from "@/utils/panel";
+import { clearSession, getToken } from "@/utils/session";
 
 interface PanelAddress {
   name: string;
@@ -37,7 +42,7 @@ export const reinitializeBaseURL = () => {
 
 reinitializeBaseURL();
 
-interface ApiResponse<T = any> {
+interface ApiResponse<T = unknown> {
   code: number;
   msg: string;
   data: T;
@@ -49,10 +54,7 @@ interface RequestOptions {
 
 // 处理token失效的逻辑
 function handleTokenExpired() {
-  // 清除localStorage中的token
-  window.localStorage.removeItem("token");
-  window.localStorage.removeItem("role_id");
-  window.localStorage.removeItem("name");
+  clearSession();
 
   // 跳转到登录页面
   if (window.location.pathname !== "/") {
@@ -61,7 +63,7 @@ function handleTokenExpired() {
 }
 
 // 检查响应是否为token失效
-function isTokenExpired(response: ApiResponse) {
+function isTokenExpired(response: ApiResponse<unknown>) {
   return (
     response &&
     response.code === 401 &&
@@ -72,9 +74,9 @@ function isTokenExpired(response: ApiResponse) {
 }
 
 const Network = {
-  get: function <T = any>(
+  get: function <T = unknown>(
     path: string = "",
-    data: any = {},
+    data: unknown = {},
     options: RequestOptions = {},
   ): Promise<ApiResponse<T>> {
     return new Promise(function (resolve) {
@@ -90,38 +92,45 @@ const Network = {
           params: data,
           timeout: options.timeout ?? 30000,
           headers: {
-            Authorization: window.localStorage.getItem("token"),
+            Authorization: getToken(),
           },
         })
         .then(function (response: AxiosResponse<ApiResponse<T>>) {
           // 检查是否token失效
           if (isTokenExpired(response.data)) {
             handleTokenExpired();
-
-            return;
           }
+
           resolve(response.data);
         })
-        .catch(function (error: any) {
+        .catch(function (error: unknown) {
+          const errorMessage = extractApiErrorMessage(error);
+
           // 检查是否是401错误（token失效）
-          if (error.response && error.response.status === 401) {
+          if (isUnauthorizedError(error)) {
             handleTokenExpired();
+
+            resolve({
+              code: 401,
+              msg: "未登录或token已过期",
+              data: null as T,
+            });
 
             return;
           }
 
           resolve({
             code: -1,
-            msg: error.message || "网络请求失败",
+            msg: errorMessage,
             data: null as T,
           });
         });
     });
   },
 
-  post: function <T = any>(
+  post: function <T = unknown>(
     path: string = "",
-    data: any = {},
+    data: unknown = {},
     options: RequestOptions = {},
   ): Promise<ApiResponse<T>> {
     return new Promise(function (resolve) {
@@ -136,7 +145,7 @@ const Network = {
         .post(path, data, {
           timeout: options.timeout ?? 30000,
           headers: {
-            Authorization: window.localStorage.getItem("token"),
+            Authorization: getToken(),
             "Content-Type": "application/json",
           },
         })
@@ -144,22 +153,29 @@ const Network = {
           // 检查是否token失效
           if (isTokenExpired(response.data)) {
             handleTokenExpired();
-
-            return;
           }
+
           resolve(response.data);
         })
-        .catch(function (error: any) {
+        .catch(function (error: unknown) {
+          const errorMessage = extractApiErrorMessage(error);
+
           // 检查是否是401错误（token失效）
-          if (error.response && error.response.status === 401) {
+          if (isUnauthorizedError(error)) {
             handleTokenExpired();
+
+            resolve({
+              code: 401,
+              msg: "未登录或token已过期",
+              data: null as T,
+            });
 
             return;
           }
 
           resolve({
             code: -1,
-            msg: error.message || "网络请求失败",
+            msg: errorMessage,
             data: null as T,
           });
         });

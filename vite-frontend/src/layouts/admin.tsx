@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Button } from "@heroui/button";
+import { Button } from "@/shadcn-bridge/heroui/button";
 import {
   Dropdown,
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
-} from "@heroui/dropdown";
+} from "@/shadcn-bridge/heroui/dropdown";
 import {
   Modal,
   ModalContent,
@@ -14,14 +14,16 @@ import {
   ModalBody,
   ModalFooter,
   useDisclosure,
-} from "@heroui/modal";
-import { Input } from "@heroui/input";
+} from "@/shadcn-bridge/heroui/modal";
+import { Input } from "@/shadcn-bridge/heroui/input";
 import { toast } from "react-hot-toast";
 
 import { Logo } from "@/components/icons";
 import { updatePassword } from "@/api";
 import { safeLogout } from "@/utils/logout";
 import { siteConfig } from "@/config/site";
+import { useMobileBreakpoint } from "@/hooks/useMobileBreakpoint";
+import { getAdminFlag, getSessionName } from "@/utils/session";
 
 interface MenuItem {
   path: string;
@@ -46,7 +48,6 @@ export default function AdminLayout({
   const location = useLocation();
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
-  const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuVisible, setMobileMenuVisible] = useState(false);
   const [username, setUsername] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
@@ -57,6 +58,7 @@ export default function AdminLayout({
     newPassword: "",
     confirmPassword: "",
   });
+  const isMobile = useMobileBreakpoint();
 
   // 菜单项配置
   const menuItems: MenuItem[] = [
@@ -170,40 +172,20 @@ export default function AdminLayout({
     },
   ];
 
-  // 检查移动端
-  const checkMobile = () => {
-    setIsMobile(window.innerWidth <= 768);
-    if (window.innerWidth > 768) {
-      setMobileMenuVisible(false);
-    }
-  };
-
   useEffect(() => {
     // 获取用户信息
-    const name = localStorage.getItem("name") || "Admin";
-
-    // 兼容处理：如果没有admin字段，根据role_id判断（0为管理员）
-    let adminFlag = localStorage.getItem("admin") === "true";
-
-    if (localStorage.getItem("admin") === null) {
-      const roleId = parseInt(localStorage.getItem("role_id") || "1", 10);
-
-      adminFlag = roleId === 0;
-      // 补充设置admin字段，避免下次再次判断
-      localStorage.setItem("admin", adminFlag.toString());
-    }
+    const name = getSessionName() || "Admin";
+    const adminFlag = getAdminFlag();
 
     setUsername(name);
     setIsAdmin(adminFlag);
-
-    // 响应式检查
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-
-    return () => {
-      window.removeEventListener("resize", checkMobile);
-    };
   }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileMenuVisible(false);
+    }
+  }, [isMobile]);
 
   // 退出登录
   const handleLogout = () => {

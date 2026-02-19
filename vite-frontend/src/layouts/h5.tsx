@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 
 import { Logo } from "@/components/icons";
 import { siteConfig } from "@/config/site";
+import { getAdminFlag } from "@/utils/session";
+import { useScrollTopOnPathChange } from "@/hooks/useScrollTopOnPathChange";
 
 interface TabItem {
   path: string;
@@ -15,6 +17,8 @@ export default function H5Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [isAdmin, setIsAdmin] = useState(false);
+
+  useScrollTopOnPathChange();
 
   // Tabbar配置
   const tabItems: TabItem[] = [
@@ -80,18 +84,7 @@ export default function H5Layout({ children }: { children: React.ReactNode }) {
   ];
 
   useEffect(() => {
-    // 兼容处理：如果没有admin字段，根据role_id判断（0为管理员）
-    let adminFlag = localStorage.getItem("admin") === "true";
-
-    if (localStorage.getItem("admin") === null) {
-      const roleId = parseInt(localStorage.getItem("role_id") || "1", 10);
-
-      adminFlag = roleId === 0;
-      // 补充设置admin字段，避免下次再次判断
-      localStorage.setItem("admin", adminFlag.toString());
-    }
-
-    setIsAdmin(adminFlag);
+    setIsAdmin(getAdminFlag());
   }, []);
 
   // Tab点击处理
@@ -103,17 +96,6 @@ export default function H5Layout({ children }: { children: React.ReactNode }) {
   const filteredTabItems = tabItems.filter(
     (item) => !item.adminOnly || isAdmin,
   );
-
-  // 路由切换时回到页面顶部，避免上一页的滚动位置遗留
-  useEffect(() => {
-    try {
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    } catch {
-      window.scrollTo(0, 0);
-    }
-    document.body.scrollTop = 0;
-    document.documentElement.scrollTop = 0;
-  }, [location.pathname]);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-100 dark:bg-black">

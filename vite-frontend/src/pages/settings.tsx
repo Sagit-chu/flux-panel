@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Input } from "@heroui/input";
-import { Button } from "@heroui/button";
-import { Card, CardBody } from "@heroui/card";
+import { Input } from "@/shadcn-bridge/heroui/input";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Card, CardBody } from "@/shadcn-bridge/heroui/card";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
@@ -87,11 +87,13 @@ export const SettingsPage = () => {
           <div className="flex items-center gap-3">
             <Button
               isIconOnly
+              aria-label="返回上一页"
               className="text-gray-600 dark:text-gray-300"
               variant="light"
-              onClick={() => navigate(-1)}
+              onPress={() => navigate(-1)}
             >
               <svg
+                aria-hidden="true"
                 className="w-5 h-5"
                 fill="none"
                 stroke="currentColor"
@@ -136,7 +138,7 @@ export const SettingsPage = () => {
                     onChange={(e) => setNewAddress(e.target.value)}
                   />
                 </div>
-                <Button color="primary" onClick={addPanelAddress}>
+                <Button color="primary" onPress={addPanelAddress}>
                   添加
                 </Button>
               </div>
@@ -182,7 +184,7 @@ export const SettingsPage = () => {
                               color="primary"
                               size="sm"
                               variant="flat"
-                              onClick={() => setCurrentPanel(panel.name)}
+                              onPress={() => setCurrentPanel(panel.name)}
                             >
                               设为当前
                             </Button>
@@ -191,7 +193,7 @@ export const SettingsPage = () => {
                             color="danger"
                             size="sm"
                             variant="light"
-                            onClick={() => handleDeletePanelAddress(panel.name)}
+                            onPress={() => handleDeletePanelAddress(panel.name)}
                           >
                             删除
                           </Button>

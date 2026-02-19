@@ -1,21 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@heroui/button";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Input } from "@heroui/input";
-import { Textarea } from "@heroui/input";
-import { Spinner } from "@heroui/spinner";
-import { Divider } from "@heroui/divider";
-import { Switch } from "@heroui/switch";
-import { Select, SelectItem } from "@heroui/select";
-import { Checkbox } from "@heroui/checkbox";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
+import { Input } from "@/shadcn-bridge/heroui/input";
+import { Textarea } from "@/shadcn-bridge/heroui/input";
+import { Spinner } from "@/shadcn-bridge/heroui/spinner";
+import { Divider } from "@/shadcn-bridge/heroui/divider";
+import { Switch } from "@/shadcn-bridge/heroui/switch";
+import { Select, SelectItem } from "@/shadcn-bridge/heroui/select";
+import { Checkbox } from "@/shadcn-bridge/heroui/checkbox";
 import {
   Modal,
   ModalBody,
   ModalContent,
   ModalFooter,
   ModalHeader,
-} from "@heroui/modal";
+} from "@/shadcn-bridge/heroui/modal";
 import toast from "react-hot-toast";
 
 import {
@@ -599,7 +599,7 @@ export default function ConfigPage() {
                 disabled={!hasChanges}
                 isLoading={saving}
                 startContent={<SaveIcon className="w-4 h-4" />}
-                onClick={handleSave}
+                onPress={handleSave}
               >
                 {saving ? "保存中..." : "保存配置"}
               </Button>
@@ -715,7 +715,7 @@ export default function ConfigPage() {
                   color="primary"
                   isLoading={announcementSaving}
                   startContent={<SaveIcon className="w-4 h-4" />}
-                  onClick={saveAnnouncement}
+                  onPress={saveAnnouncement}
                 >
                   保存公告
                 </Button>

@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
-import { Button } from "@heroui/button";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Tabs, Tab } from "@heroui/tabs";
-import { Input } from "@heroui/input";
+import { Button } from "@/shadcn-bridge/heroui/button";
+import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
+import { Tabs, Tab } from "@/shadcn-bridge/heroui/tabs";
+import { Input } from "@/shadcn-bridge/heroui/input";
 import {
   Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalFooter,
-} from "@heroui/modal";
-import { Select, SelectItem } from "@heroui/select";
+} from "@/shadcn-bridge/heroui/modal";
+import { Select, SelectItem } from "@/shadcn-bridge/heroui/select";
 import { toast } from "react-hot-toast";
 
 import {
@@ -131,7 +131,9 @@ export default function PanelSharingPage() {
       const res = await getPeerShareList();
 
       if (res.code === 0) {
-        setShares(res.data || []);
+        setShares(
+          Array.isArray(res.data) ? (res.data as unknown as PeerShare[]) : [],
+        );
       } else {
         toast.error(res.msg || "加载分享列表失败");
       }
@@ -145,9 +147,9 @@ export default function PanelSharingPage() {
       const res = await getNodeList();
 
       if (res.code === 0) {
-        const localNodes: Node[] = (res.data || []).filter(
-          (node: Node) => (node?.isRemote ?? 0) !== 1,
-        );
+        const localNodes: Node[] = (
+          Array.isArray(res.data) ? (res.data as Node[]) : []
+        ).filter((node: Node) => (node?.isRemote ?? 0) !== 1);
 
         setNodes(localNodes);
         setShareForm((prev) => {
@@ -172,7 +174,11 @@ export default function PanelSharingPage() {
       const res = await getPeerRemoteUsageList();
 
       if (res.code === 0) {
-        setRemoteUsageNodes(res.data || []);
+        setRemoteUsageNodes(
+          Array.isArray(res.data)
+            ? (res.data as unknown as RemoteUsageNode[])
+            : [],
+        );
       } else {
         toast.error(res.msg || "加载远程占用端口失败");
       }
