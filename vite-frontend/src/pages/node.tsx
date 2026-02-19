@@ -1155,7 +1155,7 @@ export default function NodePage() {
                               <span className="text-default-600 flex-shrink-0">
                                 IP
                               </span>
-                              <div className="text-right text-xs min-w-0 flex-1 ml-2">
+                              <div className="text-right text-xs min-w-0 flex-1 ml-2 min-h-[2.125rem]">
                                 {node.serverIpV4?.trim() ||
                                 node.serverIpV6?.trim() ? (
                                   <div className="space-y-0.5">

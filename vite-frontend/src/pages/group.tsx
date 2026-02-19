@@ -779,7 +779,7 @@ export default function GroupPage() {
             >
               {(item) => <SelectItem key={item.id}>{item.name}</SelectItem>}
             </Select>
-            <p className="text-xs text-default-500">
+            <p className="text-xs text-default-500 break-all whitespace-normal">
               当前已选：
               {Array.from(selectedTunnelKeys)
                 .map((id) => tunnelNameMap.get(Number(id)) || id)
@@ -824,7 +824,7 @@ export default function GroupPage() {
             >
               {(item) => <SelectItem key={item.id}>{item.user}</SelectItem>}
             </Select>
-            <p className="text-xs text-default-500">
+            <p className="text-xs text-default-500 break-all whitespace-normal">
               当前已选：
               {Array.from(selectedUserKeys)
                 .map((id) => userNameMap.get(Number(id)) || id)

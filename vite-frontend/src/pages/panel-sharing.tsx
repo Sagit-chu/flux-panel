@@ -420,7 +420,7 @@ export default function PanelSharingPage() {
                       key={share.id}
                       className="border border-divider shadow-sm"
                     >
-                      <CardHeader className="flex justify-between">
+                      <CardHeader className="flex justify-between pb-2 md:pb-2">
                         <h3 className="font-bold">{share.name}</h3>
                         <div className="flex gap-2">
                           <Button
@@ -447,7 +447,7 @@ export default function PanelSharingPage() {
                           </Button>
                         </div>
                       </CardHeader>
-                      <CardBody className="text-sm space-y-2">
+                      <CardBody className="text-sm space-y-2 pt-0 md:pt-0">
                         <p>
                           端口范围: {share.portRangeStart} -{" "}
                           {share.portRangeEnd}
@@ -535,13 +535,13 @@ export default function PanelSharingPage() {
                       key={node.nodeId}
                       className="border border-divider shadow-sm"
                     >
-                      <CardHeader className="flex justify-between">
+                      <CardHeader className="flex justify-between pb-2 md:pb-2">
                         <h3 className="font-bold">{node.nodeName}</h3>
                         <span className="text-xs text-default-500">
                           绑定 {node.activeBindingNum || 0}
                         </span>
                       </CardHeader>
-                      <CardBody className="text-sm space-y-2">
+                      <CardBody className="text-sm space-y-2 pt-0 md:pt-0">
                         {node.syncError && (
                           <div className="px-2 py-1.5 rounded-md bg-warning-50 dark:bg-warning-100/10 text-warning-700 dark:text-warning-400 text-xs">
                             {node.syncError === "provider_share_deleted"

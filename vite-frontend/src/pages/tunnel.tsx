@@ -740,9 +740,9 @@ export default function TunnelPage() {
                     {(listeners) => (
                       <Card
                         key={tunnel.id}
-                        className="group shadow-sm border border-divider hover:shadow-md transition-shadow duration-200"
+                        className="group shadow-sm border border-divider hover:shadow-md transition-shadow duration-200 overflow-hidden"
                       >
-                        <CardHeader className="pb-2">
+                        <CardHeader className="pb-2 md:pb-2">
                           <div className="flex justify-between items-start w-full">
                             {selectMode && (
                               <Checkbox
@@ -784,7 +784,7 @@ export default function TunnelPage() {
                           </div>
                         </CardHeader>
 
-                        <CardBody className="pt-0 pb-3">
+                        <CardBody className="pt-0 pb-3 md:pt-0 md:pb-3">
                           <div className="space-y-3">
                             {/* 拓扑结构 */}
                             <div className="pt-2 border-t border-divider">
