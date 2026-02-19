@@ -237,7 +237,7 @@ export default function LimitPage() {
               key={rule.id}
               className="shadow-sm border border-gray-200 dark:border-gray-700"
             >
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-3 md:pb-3">
                 <div className="flex justify-between items-start w-full">
                   <div>
                     <h3 className="font-semibold text-foreground">
@@ -253,7 +253,7 @@ export default function LimitPage() {
                   </Chip>
                 </div>
               </CardHeader>
-              <CardBody className="pt-0">
+              <CardBody className="pt-0 md:pt-0">
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-small text-default-600">

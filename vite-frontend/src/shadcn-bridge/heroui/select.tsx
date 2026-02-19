@@ -240,7 +240,7 @@ export function Select<T>({
       {selectionMode === "multiple" ? (
         <div
           className={cn(
-            "w-full rounded-md border border-input bg-background shadow-sm",
+            "w-full overflow-hidden rounded-md border border-input bg-background shadow-sm",
             isDisabled ? "cursor-not-allowed opacity-60" : "",
             className,
           )}
@@ -250,7 +250,7 @@ export function Select<T>({
             aria-controls={`${generatedId}-listbox`}
             aria-expanded={isExpanded}
             className={cn(
-              "flex w-full items-center gap-2 px-3 py-2 text-left",
+              "flex w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-2 text-left",
               classNames?.trigger,
             )}
             disabled={isDisabled}
@@ -259,7 +259,7 @@ export function Select<T>({
           >
             <span
               className={cn(
-                "block flex-1 truncate",
+                "block min-w-0 flex-1 truncate",
                 textSizeClass(size),
                 selectedArray.length > 0 ? "text-foreground" : "text-default-500",
               )}

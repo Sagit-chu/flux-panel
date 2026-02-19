@@ -690,7 +690,7 @@ export default function UserPage() {
                 key={user.id}
                 className="shadow-sm border border-divider hover:shadow-md transition-shadow duration-200"
               >
-                <CardHeader className="pb-2">
+                <CardHeader className="pb-2 md:pb-2">
                   <div className="flex justify-between items-start w-full">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-foreground truncate text-sm">
@@ -713,7 +713,7 @@ export default function UserPage() {
                   </div>
                 </CardHeader>
 
-                <CardBody className="pt-0 pb-3">
+                <CardBody className="pt-0 pb-3 md:pt-0 md:pb-3">
                   <div className="space-y-2">
                     {/* 流量信息 */}
                     <div className="space-y-1.5">
