@@ -1082,13 +1082,12 @@ export default function UserPage() {
                           <div className="flex items-center justify-between gap-4">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <Checkbox
-                                classNames={{
-                                  base: "pointer-events-none",
-                                }}
                                 color="primary"
                                 isDisabled={isAssigned}
                                 isSelected={isSelected}
                                 size="md"
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
                                 onValueChange={() =>
                                   toggleTunnelSelection(tunnel.id)
                                 }
@@ -1117,7 +1116,7 @@ export default function UserPage() {
                                   classNames={{
                                     trigger: "min-h-10 h-10",
                                   }}
-                                  label="限速规则"
+                                  placeholder="限速规则"
                                   selectedKeys={
                                     batchTunnelSelections.get(tunnel.id) !==
                                       null &&
