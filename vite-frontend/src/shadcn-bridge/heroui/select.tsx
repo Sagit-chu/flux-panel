@@ -169,19 +169,71 @@ export function Select<T>({
     () => getOptions(children, items),
     [children, items],
   );
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const listboxRef = React.useRef<HTMLDivElement | null>(null);
   const [isExpanded, setIsExpanded] = React.useState(false);
   const selected = React.useMemo(() => toSet(selectedKeys), [selectedKeys]);
   const disabled = React.useMemo(() => toSet(disabledKeys), [disabledKeys]);
 
+  React.useEffect(() => {
+    if (!isExpanded) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const container = containerRef.current;
+      const listbox = listboxRef.current;
+
+      if (!container) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (container.contains(target) || listbox?.contains(target)) {
+        return;
+      }
+
+      setIsExpanded(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsExpanded(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isExpanded]);
+
+  React.useEffect(() => {
+    if (isDisabled) {
+      setIsExpanded(false);
+    }
+  }, [isDisabled]);
+
   const selectedArray = Array.from(selected);
   const singleValue = selectedArray[0] ?? "";
+  const selectedLabels = options
+    .filter((option) => selected.has(option.key))
+    .map((option) => option.label);
+  const resolvedSelectedValues =
+    selectedLabels.length > 0 ? selectedLabels : selectedArray;
+  const selectedFullText = resolvedSelectedValues.join("、");
   const selectedText =
-    selectedArray.length > 0
-      ? options
-          .filter((option) => selected.has(option.key))
-          .map((option) => option.label)
-          .join("、")
-      : (placeholder ?? "请选择");
+    selectedArray.length > 0 ? selectedFullText : (placeholder ?? "请选择");
 
   const updateMultipleSelection = (key: string, checked?: boolean) => {
     if (isDisabled || disabled.has(key)) {
@@ -227,6 +279,70 @@ export function Select<T>({
     onSelectionChange(new Set([event.target.value]));
   };
 
+  const renderMultipleListbox = () => {
+    if (!isExpanded) {
+      return null;
+    }
+
+    return (
+      <div
+        className="absolute left-0 top-full z-50 mt-1 max-h-56 w-full space-y-1 overflow-y-auto rounded-md border border-divider bg-background p-2 shadow-md"
+        id={`${generatedId}-listbox`}
+        ref={listboxRef}
+        role="listbox"
+      >
+        {options.length === 0 ? (
+          <div
+            className={cn(
+              "px-2 py-1 text-default-500",
+              textSizeClass(size),
+            )}
+          >
+            暂无可选项
+          </div>
+        ) : (
+          options.map((option) => {
+            const optionDisabled = isDisabled || disabled.has(option.key);
+
+            return (
+              <div
+                key={option.key}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5",
+                  optionDisabled
+                    ? "cursor-not-allowed opacity-60"
+                    : "hover:bg-default-100",
+                )}
+              >
+                <BaseCheckbox
+                  checked={selected.has(option.key)}
+                  disabled={optionDisabled}
+                  onCheckedChange={(value) =>
+                    updateMultipleSelection(option.key, value === true)
+                  }
+                />
+                <button
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-left text-foreground",
+                    textSizeClass(size),
+                    optionDisabled
+                      ? "cursor-not-allowed"
+                      : "cursor-pointer",
+                  )}
+                  disabled={optionDisabled}
+                  type="button"
+                  onClick={() => updateMultipleSelection(option.key)}
+                >
+                  {option.label}
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  };
+
   return (
     <FieldContainer
       className={classNames?.base}
@@ -239,21 +355,23 @@ export function Select<T>({
     >
       {selectionMode === "multiple" ? (
         <div
+          ref={containerRef}
           className={cn(
-            "w-full overflow-hidden rounded-md border border-input bg-background shadow-sm",
-            isDisabled ? "cursor-not-allowed opacity-60" : "",
+            "relative w-full",
             className,
           )}
-          id={generatedId}
         >
           <button
             aria-controls={`${generatedId}-listbox`}
             aria-expanded={isExpanded}
+            aria-haspopup="listbox"
             className={cn(
-              "flex w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-2 text-left",
+              "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md border border-input bg-background px-3 py-2 text-left shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isDisabled ? "cursor-not-allowed opacity-60" : "",
               classNames?.trigger,
             )}
             disabled={isDisabled}
+            id={generatedId}
             type="button"
             onClick={() => setIsExpanded((prev) => !prev)}
           >
@@ -261,9 +379,11 @@ export function Select<T>({
               className={cn(
                 "block min-w-0 flex-1 truncate",
                 textSizeClass(size),
-                selectedArray.length > 0 ? "text-foreground" : "text-default-500",
+                selectedArray.length > 0
+                  ? "text-foreground"
+                  : "text-default-500",
               )}
-              title={selectedText}
+              title={selectedArray.length > 0 ? selectedFullText : undefined}
             >
               {selectedText}
             </span>
@@ -274,62 +394,7 @@ export function Select<T>({
               )}
             />
           </button>
-          {isExpanded ? (
-            <div
-              className="max-h-56 space-y-1 overflow-y-auto border-t border-divider p-2"
-              id={`${generatedId}-listbox`}
-              role="listbox"
-            >
-              {options.length === 0 ? (
-                <div
-                  className={cn(
-                    "px-2 py-1 text-default-500",
-                    textSizeClass(size),
-                  )}
-                >
-                  暂无可选项
-                </div>
-              ) : (
-                options.map((option) => {
-                  const optionDisabled = isDisabled || disabled.has(option.key);
-
-                  return (
-                    <div
-                      key={option.key}
-                      className={cn(
-                        "flex items-center gap-2 rounded-md px-2 py-1.5",
-                        optionDisabled
-                          ? "cursor-not-allowed opacity-60"
-                          : "hover:bg-default-100",
-                      )}
-                    >
-                      <BaseCheckbox
-                        checked={selected.has(option.key)}
-                        disabled={optionDisabled}
-                        onCheckedChange={(value) =>
-                          updateMultipleSelection(option.key, value === true)
-                        }
-                      />
-                      <button
-                        className={cn(
-                          "min-w-0 flex-1 truncate text-left text-foreground",
-                          textSizeClass(size),
-                          optionDisabled
-                            ? "cursor-not-allowed"
-                            : "cursor-pointer",
-                        )}
-                        disabled={optionDisabled}
-                        type="button"
-                        onClick={() => updateMultipleSelection(option.key)}
-                      >
-                        {option.label}
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          ) : null}
+          {renderMultipleListbox()}
         </div>
       ) : (
         <select

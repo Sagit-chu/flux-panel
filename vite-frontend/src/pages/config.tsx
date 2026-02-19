@@ -585,7 +585,7 @@ export default function ConfigPage() {
       </div>
 
       <Card className="shadow-md">
-        <CardHeader className="pb-4">
+        <CardHeader className="pb-6">
           <div className="flex justify-between items-center w-full">
             <div>
               <h2 className="text-xl font-semibold">基本设置</h2>
@@ -609,7 +609,7 @@ export default function ConfigPage() {
 
         <Divider />
 
-        <CardBody className="space-y-6 pt-6">
+        <CardBody className="space-y-6 pt-8 md:pt-8">
           {CONFIG_ITEMS.map((item, index) => {
             // 检查配置项是否应该显示
             if (!shouldShowItem(item)) {
@@ -660,7 +660,7 @@ export default function ConfigPage() {
       )}
 
       <Card className="mt-6 shadow-md">
-        <CardHeader className="pb-4">
+        <CardHeader className="pb-6">
           <div className="flex justify-between items-center w-full">
             <div>
               <h2 className="text-xl font-semibold">公告管理</h2>
@@ -673,7 +673,7 @@ export default function ConfigPage() {
 
         <Divider />
 
-        <CardBody className="space-y-4 pt-6">
+        <CardBody className="space-y-4 pt-8 md:pt-8">
           {announcementLoading ? (
             <div className="flex justify-center py-8">
               <Spinner size="lg" />
@@ -727,7 +727,7 @@ export default function ConfigPage() {
 
       {/* 备份与恢复 */}
       <Card className="mt-6 shadow-md">
-        <CardHeader className="pb-4">
+        <CardHeader className="pb-6">
           <div className="flex justify-between items-center w-full">
             <div>
               <h2 className="text-xl font-semibold">数据备份与恢复</h2>
@@ -740,7 +740,7 @@ export default function ConfigPage() {
 
         <Divider />
 
-        <CardBody className="space-y-6 pt-6">
+        <CardBody className="space-y-6 pt-8 md:pt-8">
           {/* 导出部分 */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium">导出数据</h3>

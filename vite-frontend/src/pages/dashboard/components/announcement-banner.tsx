@@ -16,7 +16,7 @@ export const AnnouncementBanner = ({
   return (
     <Card className="mb-4 lg:mb-6 border border-blue-200 dark:border-blue-500/30 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-500/10 dark:to-purple-500/10">
       <CardBody className="p-4">
-        <div className="flex items-start gap-3">
+        <div className="flex items-center justify-start gap-3">
           <div className="p-2 bg-blue-100 dark:bg-blue-500/20 rounded-lg flex-shrink-0">
             <svg
               aria-hidden="true"
