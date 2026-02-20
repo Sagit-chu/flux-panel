@@ -242,7 +242,7 @@ export default function ForwardPage() {
           saveOrder(FORWARD_ORDER_KEY, order);
         }
       }
-    } catch {}
+    } catch { }
   };
 
   // 加载所有数据
@@ -1289,11 +1289,10 @@ export default function ForwardPage() {
             <div className="flex items-center gap-1.5 ml-2">
               {viewMode === "direct" && (
                 <div
-                  className={`cursor-grab active:cursor-grabbing p-2 text-default-400 hover:text-default-600 transition-colors touch-manipulation ${
-                    isMobile
-                      ? "opacity-100" // 移动端始终显示
-                      : "opacity-0 group-hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                  }`}
+                  className={`cursor-grab active:cursor-grabbing p-2 text-default-400 hover:text-default-600 transition-colors touch-manipulation ${isMobile
+                    ? "opacity-100" // 移动端始终显示
+                    : "opacity-0 group-hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                    }`}
                   {...listeners}
                   style={{ touchAction: "none" }}
                   title={isMobile ? "长按拖拽排序" : "拖拽排序"}
@@ -1331,11 +1330,10 @@ export default function ForwardPage() {
             {/* 地址信息 */}
             <div className="space-y-1">
               <button
-                className={`cursor-pointer px-2 py-1 bg-default-50 dark:bg-default-100/50 rounded border border-default-200 dark:border-default-300 transition-colors duration-200 ${
-                  hasMultipleAddresses(forward.inIp)
-                    ? "hover:bg-default-100 dark:hover:bg-default-200/50"
-                    : ""
-                }`}
+                className={`cursor-pointer px-2 py-1 bg-default-50 dark:bg-default-100/50 rounded border border-default-200 dark:border-default-300 transition-colors duration-200 ${hasMultipleAddresses(forward.inIp)
+                  ? "hover:bg-default-100 dark:hover:bg-default-200/50"
+                  : ""
+                  }`}
                 title={formatInAddress(forward.inIp, forward.inPort)}
                 type="button"
                 onClick={() =>
@@ -1371,11 +1369,10 @@ export default function ForwardPage() {
               </button>
 
               <button
-                className={`cursor-pointer px-2 py-1 bg-default-50 dark:bg-default-100/50 rounded border border-default-200 dark:border-default-300 transition-colors duration-200 ${
-                  hasMultipleAddresses(forward.remoteAddr)
-                    ? "hover:bg-default-100 dark:hover:bg-default-200/50"
-                    : ""
-                }`}
+                className={`cursor-pointer px-2 py-1 bg-default-50 dark:bg-default-100/50 rounded border border-default-200 dark:border-default-300 transition-colors duration-200 ${hasMultipleAddresses(forward.remoteAddr)
+                  ? "hover:bg-default-100 dark:hover:bg-default-200/50"
+                  : ""
+                  }`}
                 title={formatRemoteAddress(forward.remoteAddr)}
                 type="button"
                 onClick={() =>
@@ -1675,8 +1672,15 @@ export default function ForwardPage() {
       {/* 根据显示模式渲染不同内容 */}
       {viewMode === "grouped" ? (
         sortedForwards.length > 0 ? (
-          <div className="overflow-hidden rounded-lg border border-divider bg-content1">
-            <Table aria-label="全部转发列表" classNames={{ wrapper: "rounded-none" }}>
+          <div className="overflow-hidden rounded-xl border border-divider bg-content1 shadow-md">
+            <Table
+              aria-label="全部转发列表"
+              classNames={{
+                th: "bg-default-100/50 text-default-600 font-semibold text-sm border-b border-divider py-3 uppercase tracking-wider",
+                td: "py-3 border-b border-divider/50 group-data-[last=true]:border-b-0",
+                tr: "hover:bg-default-50/50 transition-colors",
+              }}
+            >
               <TableHeader>
                 {selectMode && <TableColumn className="w-14">选择</TableColumn>}
                 <TableColumn>用户</TableColumn>
@@ -1705,21 +1709,33 @@ export default function ForwardPage() {
                         </TableCell>
                       )}
                       <TableCell className="whitespace-nowrap">
-                        {forward.userName || "未知用户"}
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                            {(forward.userName || "未")[0].toUpperCase()}
+                          </div>
+                          <span className="text-sm font-medium text-default-700">
+                            {forward.userName || "未知用户"}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
-                        {forward.tunnelName}
+                        <Chip
+                          size="sm"
+                          color="secondary"
+                          className="border-none bg-secondary/10 px-2"
+                        >
+                          <span className="font-medium text-secondary-700">{forward.tunnelName}</span>
+                        </Chip>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap font-medium text-foreground">
+                      <TableCell className="whitespace-nowrap font-semibold text-foreground">
                         {forward.name}
                       </TableCell>
                       <TableCell className="max-w-[220px]">
                         <button
-                          className={`w-full truncate rounded px-2 py-1 text-left font-mono text-xs text-foreground transition-colors ${
-                            hasMultipleAddresses(forward.inIp)
-                              ? "hover:bg-default-100"
-                              : ""
-                          }`}
+                          className={`w-full truncate rounded-md bg-default-100/50 px-2.5 py-1.5 text-left font-mono text-xs font-medium text-default-700 transition-all ${hasMultipleAddresses(forward.inIp)
+                            ? "hover:bg-default-200 hover:shadow-sm"
+                            : ""
+                            }`}
                           title={formatInAddress(forward.inIp, forward.inPort)}
                           type="button"
                           onClick={() =>
@@ -1731,11 +1747,10 @@ export default function ForwardPage() {
                       </TableCell>
                       <TableCell className="max-w-[240px]">
                         <button
-                          className={`w-full truncate rounded px-2 py-1 text-left font-mono text-xs text-foreground transition-colors ${
-                            hasMultipleAddresses(forward.remoteAddr)
-                              ? "hover:bg-default-100"
-                              : ""
-                          }`}
+                          className={`w-full truncate rounded-md bg-default-100/50 px-2.5 py-1.5 text-left font-mono text-xs font-medium text-default-700 transition-all ${hasMultipleAddresses(forward.remoteAddr)
+                            ? "hover:bg-default-200 hover:shadow-sm"
+                            : ""
+                            }`}
                           title={formatRemoteAddress(forward.remoteAddr)}
                           type="button"
                           onClick={() =>
@@ -1746,54 +1761,79 @@ export default function ForwardPage() {
                         </button>
                       </TableCell>
                       <TableCell>
-                        <Chip className="text-xs" size="sm" variant="flat">
+                        <Chip
+                          className="text-xs font-medium"
+                          color={strategyDisplay.color as any}
+                          size="sm"
+                          variant="flat"
+                        >
                           {strategyDisplay.text}
                         </Chip>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
-                        <div className="flex flex-col gap-1 text-xs">
-                          <span>↑{formatFlow(forward.inFlow || 0)}</span>
-                          <span>↓{formatFlow(forward.outFlow || 0)}</span>
+                        <div className="flex flex-col gap-1.5 text-xs font-medium text-default-600">
+                          <span className="flex items-center gap-1 text-success-600">
+                            <span className="text-[10px]">↑</span>
+                            {formatFlow(forward.inFlow || 0)}
+                          </span>
+                          <span className="flex items-center gap-1 text-primary-600">
+                            <span className="text-[10px]">↓</span>
+                            {formatFlow(forward.outFlow || 0)}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2 whitespace-nowrap">
+                        <div className="flex items-center gap-2.5 whitespace-nowrap">
                           <Switch
                             isDisabled={forward.status !== 1 && forward.status !== 0}
                             isSelected={forward.serviceRunning}
                             size="sm"
+                            color="success"
                             onValueChange={() => handleServiceToggle(forward)}
                           />
-                          <Chip className="text-xs" size="sm" variant="flat">
+                          <Chip
+                            className="border-none text-xs font-medium"
+                            color={statusDisplay.color as any}
+                            size="sm"
+                          >
                             {statusDisplay.text}
                           </Chip>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex justify-end gap-1.5">
+                        <div className="flex justify-end gap-2">
                           <Button
-                            color="primary"
+                            isIconOnly
+                            className="bg-primary/10 text-primary hover:bg-primary/20"
                             size="sm"
-                            variant="flat"
+                            title="编辑"
                             onPress={() => handleEdit(forward)}
                           >
-                            编辑
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
                           </Button>
                           <Button
-                            color="warning"
+                            isIconOnly
+                            className="bg-warning/10 text-warning hover:bg-warning/20"
                             size="sm"
-                            variant="flat"
+                            title="诊断"
                             onPress={() => handleDiagnose(forward)}
                           >
-                            诊断
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
                           </Button>
                           <Button
-                            color="danger"
+                            isIconOnly
+                            className="bg-danger/10 text-danger hover:bg-danger/20"
                             size="sm"
-                            variant="flat"
+                            title="删除"
                             onPress={() => handleDelete(forward)}
                           >
-                            删除
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
                           </Button>
                         </div>
                       </TableCell>
@@ -1837,59 +1877,59 @@ export default function ForwardPage() {
           </Card>
         )
       ) : /* 直接显示模式 */
-      forwards.length > 0 ? (
-        <DndContext
-          collisionDetection={closestCenter}
-          sensors={sensors}
-          onDragEnd={handleDragEnd}
-          onDragStart={() => {}} // 添加空的 onDragStart 处理器
-        >
-          <SortableContext
-            items={sortableForwardIds}
-            strategy={rectSortingStrategy}
+        forwards.length > 0 ? (
+          <DndContext
+            collisionDetection={closestCenter}
+            sensors={sensors}
+            onDragEnd={handleDragEnd}
+            onDragStart={() => { }} // 添加空的 onDragStart 处理器
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-              {sortedForwards.map((forward) =>
-                forward && forward.id ? (
-                  <SortableForwardCard key={forward.id} forward={forward} />
-                ) : null,
-              )}
-            </div>
-          </SortableContext>
-        </DndContext>
-      ) : (
-        /* 空状态 */
-        <Card className="shadow-sm border border-gray-200 dark:border-gray-700">
-          <CardBody className="text-center py-16">
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-16 h-16 bg-default-100 rounded-full flex items-center justify-center">
-                <svg
-                  aria-hidden="true"
-                  className="w-8 h-8 text-default-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M8 9l4-4 4 4m0 6l-4 4-4-4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                  />
-                </svg>
+            <SortableContext
+              items={sortableForwardIds}
+              strategy={rectSortingStrategy}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                {sortedForwards.map((forward) =>
+                  forward && forward.id ? (
+                    <SortableForwardCard key={forward.id} forward={forward} />
+                  ) : null,
+                )}
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">
-                  暂无转发配置
-                </h3>
-                <p className="text-default-500 text-sm mt-1">
-                  还没有创建任何转发配置，点击上方按钮开始创建
-                </p>
+            </SortableContext>
+          </DndContext>
+        ) : (
+          /* 空状态 */
+          <Card className="shadow-sm border border-gray-200 dark:border-gray-700">
+            <CardBody className="text-center py-16">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-16 h-16 bg-default-100 rounded-full flex items-center justify-center">
+                  <svg
+                    aria-hidden="true"
+                    className="w-8 h-8 text-default-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M8 9l4-4 4 4m0 6l-4 4-4-4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">
+                    暂无转发配置
+                  </h3>
+                  <p className="text-default-500 text-sm mt-1">
+                    还没有创建任何转发配置，点击上方按钮开始创建
+                  </p>
+                </div>
               </div>
-            </div>
-          </CardBody>
-        </Card>
-      )}
+            </CardBody>
+          </Card>
+        )}
 
       {/* 新增/编辑模态框 */}
       <Modal
@@ -2358,11 +2398,10 @@ export default function ForwardPage() {
                     {importResults.map((result, index) => (
                       <div
                         key={index}
-                        className={`p-2 rounded border ${
-                          result.success
-                            ? "bg-success-50 dark:bg-success-100/10 border-success-200 dark:border-success-300/20"
-                            : "bg-danger-50 dark:bg-danger-100/10 border-danger-200 dark:border-danger-300/20"
-                        }`}
+                        className={`p-2 rounded border ${result.success
+                          ? "bg-success-50 dark:bg-success-100/10 border-success-200 dark:border-success-300/20"
+                          : "bg-danger-50 dark:bg-danger-100/10 border-danger-200 dark:border-danger-300/20"
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           {result.success ? (
@@ -2395,11 +2434,10 @@ export default function ForwardPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
                               <span
-                                className={`text-xs font-medium ${
-                                  result.success
-                                    ? "text-success-700 dark:text-success-300"
-                                    : "text-danger-700 dark:text-danger-300"
-                                }`}
+                                className={`text-xs font-medium ${result.success
+                                  ? "text-success-700 dark:text-success-300"
+                                  : "text-danger-700 dark:text-danger-300"
+                                  }`}
                               >
                                 {result.success ? "成功" : "失败"}
                               </span>
@@ -2411,11 +2449,10 @@ export default function ForwardPage() {
                               </code>
                             </div>
                             <div
-                              className={`text-xs ${
-                                result.success
-                                  ? "text-success-600 dark:text-success-400"
-                                  : "text-danger-600 dark:text-danger-400"
-                              }`}
+                              className={`text-xs ${result.success
+                                ? "text-success-600 dark:text-success-400"
+                                : "text-danger-600 dark:text-danger-400"
+                                }`}
                             >
                               {result.message}
                             </div>
@@ -2598,20 +2635,18 @@ export default function ForwardPage() {
                                     return (
                                       <tr
                                         key={index}
-                                        className={`hover:bg-default-50 dark:hover:bg-gray-700/50 ${
-                                          result.success
-                                            ? "bg-white dark:bg-gray-800"
-                                            : "bg-danger-50 dark:bg-danger-900/30"
-                                        }`}
+                                        className={`hover:bg-default-50 dark:hover:bg-gray-700/50 ${result.success
+                                          ? "bg-white dark:bg-gray-800"
+                                          : "bg-danger-50 dark:bg-danger-900/30"
+                                          }`}
                                       >
                                         <td className="px-3 py-2">
                                           <div className="flex items-center gap-2">
                                             <span
-                                              className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-                                                result.success
-                                                  ? "bg-success text-white"
-                                                  : "bg-danger text-white"
-                                              }`}
+                                              className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${result.success
+                                                ? "bg-success text-white"
+                                                : "bg-danger text-white"
+                                                }`}
                                             >
                                               {result.success ? "✓" : "✗"}
                                             </span>
@@ -2653,11 +2688,10 @@ export default function ForwardPage() {
                                         <td className="px-3 py-2 text-center">
                                           {result.success ? (
                                             <span
-                                              className={`font-semibold ${
-                                                (result.packetLoss || 0) > 0
-                                                  ? "text-warning"
-                                                  : "text-success"
-                                              }`}
+                                              className={`font-semibold ${(result.packetLoss || 0) > 0
+                                                ? "text-warning"
+                                                : "text-success"
+                                                }`}
                                             >
                                               {result.packetLoss?.toFixed(1)}%
                                             </span>
@@ -2771,19 +2805,17 @@ export default function ForwardPage() {
                                 return (
                                   <div
                                     key={index}
-                                    className={`border rounded-lg p-3 ${
-                                      result.success
-                                        ? "border-divider bg-white dark:bg-gray-800"
-                                        : "border-danger-200 dark:border-danger-300/30 bg-danger-50 dark:bg-danger-900/30"
-                                    }`}
+                                    className={`border rounded-lg p-3 ${result.success
+                                      ? "border-divider bg-white dark:bg-gray-800"
+                                      : "border-danger-200 dark:border-danger-300/30 bg-danger-50 dark:bg-danger-900/30"
+                                      }`}
                                   >
                                     <div className="flex items-start gap-2 mb-2">
                                       <span
-                                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${
-                                          result.success
-                                            ? "bg-success text-white"
-                                            : "bg-danger text-white"
-                                        }`}
+                                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${result.success
+                                          ? "bg-success text-white"
+                                          : "bg-danger text-white"
+                                          }`}
                                       >
                                         {result.success ? "✓" : "✗"}
                                       </span>
@@ -2819,11 +2851,10 @@ export default function ForwardPage() {
                                         </div>
                                         <div className="text-center">
                                           <div
-                                            className={`text-lg font-bold ${
-                                              (result.packetLoss || 0) > 0
-                                                ? "text-warning"
-                                                : "text-success"
-                                            }`}
+                                            className={`text-lg font-bold ${(result.packetLoss || 0) > 0
+                                              ? "text-warning"
+                                              : "text-success"
+                                              }`}
                                           >
                                             {result.packetLoss?.toFixed(1)}%
                                           </div>
