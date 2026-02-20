@@ -4,11 +4,15 @@ import { cn } from "@/lib/utils";
 
 interface TableClassNames {
   th?: string;
+  td?: string;
+  tr?: string;
   wrapper?: string;
 }
 
 interface TableStyleContextValue {
   thClassName?: string;
+  tdClassName?: string;
+  trClassName?: string;
 }
 
 const TableStyleContext = React.createContext<TableStyleContextValue>({});
@@ -24,7 +28,13 @@ export function Table({
   ...props
 }: TableProps) {
   return (
-    <TableStyleContext.Provider value={{ thClassName: classNames?.th }}>
+    <TableStyleContext.Provider
+      value={{
+        thClassName: classNames?.th,
+        tdClassName: classNames?.td,
+        trClassName: classNames?.tr,
+      }}
+    >
       <div
         className={cn("w-full overflow-auto rounded-md", classNames?.wrapper)}
       >
@@ -151,11 +161,23 @@ export function TableColumn({
 }
 
 export function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+  const { trClassName } = React.useContext(TableStyleContext);
+
   return (
-    <tr className={cn("border-b last:border-b-0", className)} {...props} />
+    <tr
+      className={cn("border-b last:border-b-0", trClassName, className)}
+      {...props}
+    />
   );
 }
 
 export function TableCell({ className, ...props }: React.ComponentProps<"td">) {
-  return <td className={cn("px-3 py-2 align-middle", className)} {...props} />;
+  const { tdClassName } = React.useContext(TableStyleContext);
+
+  return (
+    <td
+      className={cn("px-3 py-2 align-middle", tdClassName, className)}
+      {...props}
+    />
+  );
 }

@@ -1,5 +1,4 @@
 import * as React from "react";
-import { CalendarIcon } from "lucide-react";
 
 import { FieldContainer, type FieldMetaProps } from "./shared";
 
@@ -88,7 +87,6 @@ export function DatePicker({
   value,
 }: DatePickerProps) {
   const id = React.useId();
-  const nativePickerRef = React.useRef<HTMLInputElement | null>(null);
   const formattedValue = React.useMemo(() => formatDateValue(value), [value]);
   const [textValue, setTextValue] = React.useState(formattedValue);
 
@@ -160,30 +158,6 @@ export function DatePicker({
     setTextValue(formattedValue);
   };
 
-  const openNativePicker = () => {
-    if (isDisabled) {
-      return;
-    }
-    const picker = nativePickerRef.current;
-
-    if (!picker) {
-      return;
-    }
-
-    const pickerWithShow = picker as HTMLInputElement & {
-      showPicker?: () => void;
-    };
-
-    if (typeof pickerWithShow.showPicker === "function") {
-      pickerWithShow.showPicker();
-
-      return;
-    }
-
-    picker.focus();
-    picker.click();
-  };
-
   return (
     <FieldContainer
       description={description}
@@ -193,71 +167,40 @@ export function DatePicker({
       isRequired={isRequired}
       label={label}
     >
-      {shouldUseTextInput ? (
-        <div className="flex items-center gap-2">
-          <Input
-            aria-invalid={isInvalid}
-            className={cn("flex-1", className)}
-            disabled={isDisabled}
-            id={id}
-            inputMode="numeric"
-            placeholder="YYYY-MM-DD"
-            required={isRequired}
-            type="text"
-            value={textValue}
-            onBlur={commitTextInput}
-            onChange={(event) => {
-              const nextValue = event.target.value;
+      <Input
+        aria-invalid={isInvalid}
+        className={cn(className)}
+        disabled={isDisabled}
+        id={id}
+        inputMode={shouldUseTextInput ? "numeric" : undefined}
+        placeholder={shouldUseTextInput ? "YYYY-MM-DD" : undefined}
+        required={isRequired}
+        type={shouldUseTextInput ? "text" : "date"}
+        value={shouldUseTextInput ? textValue : formattedValue}
+        onChange={(event) => {
+          const nextValue = event.target.value;
 
-              setTextValue(nextValue);
-              notifyTextDateChange(nextValue);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                commitTextInput();
+          if (shouldUseTextInput) {
+            setTextValue(nextValue);
+            notifyTextDateChange(nextValue);
+
+            return;
+          }
+
+          notifyNativeDateChange(nextValue);
+        }}
+        onBlur={shouldUseTextInput ? commitTextInput : undefined}
+        onKeyDown={
+          shouldUseTextInput
+            ? (event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitTextInput();
+                }
               }
-            }}
-          />
-          <button
-            aria-label="打开日历选择器"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-background text-default-600 shadow-sm transition-colors hover:bg-default-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={isDisabled}
-            type="button"
-            onClick={openNativePicker}
-          >
-            <CalendarIcon className="h-4 w-4" />
-          </button>
-          <input
-            ref={nativePickerRef}
-            aria-hidden="true"
-            className="sr-only"
-            disabled={isDisabled}
-            tabIndex={-1}
-            type="date"
-            value={formattedValue}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-
-              setTextValue(nextValue);
-              notifyNativeDateChange(nextValue);
-            }}
-          />
-        </div>
-      ) : (
-        <Input
-          aria-invalid={isInvalid}
-          className={cn(className)}
-          disabled={isDisabled}
-          id={id}
-          required={isRequired}
-          type="date"
-          value={formattedValue}
-          onChange={(event) => {
-            notifyNativeDateChange(event.target.value);
-          }}
-        />
-      )}
+            : undefined
+        }
+      />
     </FieldContainer>
   );
 }

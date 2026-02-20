@@ -226,9 +226,9 @@ export default function TunnelPage() {
       trafficRatio: tunnel.trafficRatio,
       inIp: tunnel.inIp
         ? tunnel.inIp
-            .split(",")
-            .map((ip: string) => ip.trim())
-            .join("\n")
+          .split(",")
+          .map((ip: string) => ip.trim())
+          .join("\n")
         : "",
       ipPreference: tunnel.ipPreference || "",
       status: tunnel.status,
@@ -678,7 +678,7 @@ export default function TunnelPage() {
 
         <div className="flex items-center gap-2">
           <Button
-            color="default"
+            color={selectMode ? "secondary" : "default"}
             size="sm"
             variant={selectMode ? "solid" : "flat"}
             onPress={toggleSelectMode}
@@ -1127,11 +1127,6 @@ export default function TunnelPage() {
                     </Select>
 
                     <Input
-                      endContent={
-                        <div className="pointer-events-none flex items-center">
-                          <span className="text-default-400 text-small">x</span>
-                        </div>
-                      }
                       errorMessage={errors.trafficRatio}
                       isInvalid={!!errors.trafficRatio}
                       label="流量倍率"
@@ -1386,6 +1381,7 @@ export default function TunnelPage() {
                                       ]}
                                       label="节点"
                                       placeholder="选择节点（可多选）"
+                                      dropdownPlacement="top"
                                       selectedKeys={groupNodes
                                         .filter((ct) => ct.nodeId !== -1)
                                         .map((ct) => ct.nodeId.toString())}
@@ -1452,14 +1448,14 @@ export default function TunnelPage() {
                                               {form.inNodeId.some(
                                                 (ct) => ct.nodeId === node.id,
                                               ) && (
-                                                <Chip
-                                                  color="warning"
-                                                  size="sm"
-                                                  variant="flat"
-                                                >
-                                                  已选为入口
-                                                </Chip>
-                                              )}
+                                                  <Chip
+                                                    color="warning"
+                                                    size="sm"
+                                                    variant="flat"
+                                                  >
+                                                    已选为入口
+                                                  </Chip>
+                                                )}
                                               {form.outNodeId &&
                                                 form.outNodeId.some(
                                                   (ct) => ct.nodeId === node.id,
@@ -1482,14 +1478,14 @@ export default function TunnelPage() {
                                                       ct.nodeId !== -1,
                                                   ),
                                               ) && (
-                                                <Chip
-                                                  color="primary"
-                                                  size="sm"
-                                                  variant="flat"
-                                                >
-                                                  已选为其他跳
-                                                </Chip>
-                                              )}
+                                                  <Chip
+                                                    color="primary"
+                                                    size="sm"
+                                                    variant="flat"
+                                                  >
+                                                    已选为其他跳
+                                                  </Chip>
+                                                )}
                                             </div>
                                           </div>
                                         </SelectItem>
@@ -1603,11 +1599,12 @@ export default function TunnelPage() {
                             isInvalid={!!errors.outNodeId}
                             label="节点"
                             placeholder="请选择出口节点（可多选）"
+                            dropdownPlacement="top"
                             selectedKeys={
                               form.outNodeId
                                 ? form.outNodeId
-                                    .filter((ct) => ct.nodeId !== -1)
-                                    .map((ct) => ct.nodeId.toString())
+                                  .filter((ct) => ct.nodeId !== -1)
+                                  .map((ct) => ct.nodeId.toString())
                                 : []
                             }
                             selectionMode="multiple"
@@ -1674,25 +1671,25 @@ export default function TunnelPage() {
                                     {form.inNodeId.some(
                                       (ct) => ct.nodeId === node.id,
                                     ) && (
-                                      <Chip
-                                        color="warning"
-                                        size="sm"
-                                        variant="flat"
-                                      >
-                                        已选为入口
-                                      </Chip>
-                                    )}
+                                        <Chip
+                                          color="warning"
+                                          size="sm"
+                                          variant="flat"
+                                        >
+                                          已选为入口
+                                        </Chip>
+                                      )}
                                     {getSelectedChainNodeIds().includes(
                                       node.id,
                                     ) && (
-                                      <Chip
-                                        color="primary"
-                                        size="sm"
-                                        variant="flat"
-                                      >
-                                        已选为转发链
-                                      </Chip>
-                                    )}
+                                        <Chip
+                                          color="primary"
+                                          size="sm"
+                                          variant="flat"
+                                        >
+                                          已选为转发链
+                                        </Chip>
+                                      )}
                                   </div>
                                 </div>
                               </SelectItem>
@@ -2055,20 +2052,18 @@ export default function TunnelPage() {
                                     return (
                                       <tr
                                         key={index}
-                                        className={`hover:bg-default-50 dark:hover:bg-gray-700/50 ${
-                                          result.success
-                                            ? "bg-white dark:bg-gray-800"
-                                            : "bg-danger-50 dark:bg-danger-900/30"
-                                        }`}
+                                        className={`hover:bg-default-50 dark:hover:bg-gray-700/50 ${result.success
+                                          ? "bg-white dark:bg-gray-800"
+                                          : "bg-danger-50 dark:bg-danger-900/30"
+                                          }`}
                                       >
                                         <td className="px-3 py-2">
                                           <div className="flex items-center gap-2">
                                             <span
-                                              className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-                                                result.success
-                                                  ? "bg-success text-white"
-                                                  : "bg-danger text-white"
-                                              }`}
+                                              className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${result.success
+                                                ? "bg-success text-white"
+                                                : "bg-danger text-white"
+                                                }`}
                                             >
                                               {result.success ? "✓" : "✗"}
                                             </span>
@@ -2110,11 +2105,10 @@ export default function TunnelPage() {
                                         <td className="px-3 py-2 text-center">
                                           {result.success ? (
                                             <span
-                                              className={`font-semibold ${
-                                                (result.packetLoss || 0) > 0
-                                                  ? "text-warning"
-                                                  : "text-success"
-                                              }`}
+                                              className={`font-semibold ${(result.packetLoss || 0) > 0
+                                                ? "text-warning"
+                                                : "text-success"
+                                                }`}
                                             >
                                               {result.packetLoss?.toFixed(1)}%
                                             </span>
@@ -2227,19 +2221,17 @@ export default function TunnelPage() {
                                 return (
                                   <div
                                     key={index}
-                                    className={`border rounded-lg p-3 ${
-                                      result.success
-                                        ? "border-divider bg-white dark:bg-gray-800"
-                                        : "border-danger-200 dark:border-danger-300/30 bg-danger-50 dark:bg-danger-900/30"
-                                    }`}
+                                    className={`border rounded-lg p-3 ${result.success
+                                      ? "border-divider bg-white dark:bg-gray-800"
+                                      : "border-danger-200 dark:border-danger-300/30 bg-danger-50 dark:bg-danger-900/30"
+                                      }`}
                                   >
                                     <div className="flex items-start gap-2 mb-2">
                                       <span
-                                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${
-                                          result.success
-                                            ? "bg-success text-white"
-                                            : "bg-danger text-white"
-                                        }`}
+                                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${result.success
+                                          ? "bg-success text-white"
+                                          : "bg-danger text-white"
+                                          }`}
                                       >
                                         {result.success ? "✓" : "✗"}
                                       </span>
@@ -2275,11 +2267,10 @@ export default function TunnelPage() {
                                         </div>
                                         <div className="text-center">
                                           <div
-                                            className={`text-lg font-bold ${
-                                              (result.packetLoss || 0) > 0
-                                                ? "text-warning"
-                                                : "text-success"
-                                            }`}
+                                            className={`text-lg font-bold ${(result.packetLoss || 0) > 0
+                                              ? "text-warning"
+                                              : "text-success"
+                                              }`}
                                           >
                                             {result.packetLoss?.toFixed(1)}%
                                           </div>
