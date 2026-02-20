@@ -158,6 +158,7 @@ export default function ForwardPage() {
 
   // 模态框状态
   const [modalOpen, setModalOpen] = useState(false);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [diagnosisModalOpen, setDiagnosisModalOpen] = useState(false);
@@ -1702,48 +1703,41 @@ export default function ForwardPage() {
     <div className="px-3 lg:px-6 py-8">
       {/* 页面头部 */}
       <div className="flex items-center justify-between mb-6 gap-2">
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex-1"></div>
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+          {/* 筛选按钮 (仅在分组视图显示) */}
           {viewMode === "grouped" && (
-            <>
-              <div className="w-[130px] sm:w-[150px]">
-                <Select
-                  aria-label="筛选用户"
-                  size="sm"
-                  variant="bordered"
-                  selectedKeys={[filterUserId]}
-                  onSelectionChange={(keys) => {
-                    const key = Array.from(keys)[0] as string;
-                    setFilterUserId(key || "all");
-                  }}
+            <Button
+              aria-label="筛选条件"
+              className={filterUserId !== "all" || filterTunnelId !== "all" ? "bg-primary/20 text-primary" : "text-default-600"}
+              color={filterUserId !== "all" || filterTunnelId !== "all" ? "primary" : "default"}
+              size="sm"
+              title="筛选条件"
+              variant="flat"
+              onPress={() => setIsFilterModalOpen(true)}
+              startContent={
+                <svg
+                  aria-hidden="true"
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <SelectItem key="all">全部用户</SelectItem>
-                  {uniqueUsers.map(user => (
-                    <SelectItem key={user.id.toString()}>{user.name}</SelectItem>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="w-[130px] sm:w-[150px]">
-                <Select
-                  aria-label="筛选隧道"
-                  size="sm"
-                  variant="bordered"
-                  selectedKeys={[filterTunnelId]}
-                  onSelectionChange={(keys) => {
-                    const key = Array.from(keys)[0] as string;
-                    setFilterTunnelId(key || "all");
-                  }}
-                >
-                  <SelectItem key="all">全部隧道</SelectItem>
-                  {tunnels.map(tunnel => (
-                    <SelectItem key={tunnel.id.toString()}>{tunnel.name}</SelectItem>
-                  ))}
-                </Select>
-              </div>
-            </>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                  />
+                </svg>
+              }
+            >
+              <span className="hidden sm:inline">筛选</span>
+              {(filterUserId !== "all" || filterTunnelId !== "all") && (
+                <span className="ml-1 flex h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
+            </Button>
           )}
-        </div>
-        <div className="flex flex-1 flex-wrap items-center justify-end gap-2 sm:gap-3">
           {/* 显示模式切换按钮 */}
           <Button
             isIconOnly
@@ -3160,6 +3154,73 @@ export default function ForwardPage() {
                   onPress={handleBatchChangeTunnel}
                 >
                   确认换隧道
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* 筛选模态框 */}
+      <Modal
+        isOpen={isFilterModalOpen}
+        onOpenChange={setIsFilterModalOpen}
+        placement="center"
+        size="md"
+      >
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">筛选条件</ModalHeader>
+              <ModalBody>
+                <div className="flex flex-col gap-4 py-2">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">按用户筛选</label>
+                    <Select
+                      aria-label="筛选用户"
+                      className="w-full"
+                      variant="bordered"
+                      selectedKeys={[filterUserId]}
+                      onSelectionChange={(keys) => {
+                        const key = Array.from(keys)[0] as string;
+                        setFilterUserId(key || "all");
+                      }}
+                    >
+                      <SelectItem key="all">全部用户</SelectItem>
+                      {uniqueUsers.map(user => (
+                        <SelectItem key={user.id.toString()}>{user.name}</SelectItem>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">按隧道筛选</label>
+                    <Select
+                      aria-label="筛选隧道"
+                      className="w-full"
+                      variant="bordered"
+                      selectedKeys={[filterTunnelId]}
+                      onSelectionChange={(keys) => {
+                        const key = Array.from(keys)[0] as string;
+                        setFilterTunnelId(key || "all");
+                      }}
+                    >
+                      <SelectItem key="all">全部隧道</SelectItem>
+                      {tunnels.map(tunnel => (
+                        <SelectItem key={tunnel.id.toString()}>{tunnel.name}</SelectItem>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+              </ModalBody>
+              <ModalFooter>
+                <Button color="default" variant="flat" onPress={() => {
+                  setFilterUserId("all");
+                  setFilterTunnelId("all");
+                }}>
+                  重置
+                </Button>
+                <Button color="primary" onPress={onClose}>
+                  完成
                 </Button>
               </ModalFooter>
             </>
