@@ -16,8 +16,8 @@ export const AnnouncementBanner = ({
   return (
     <Card className="mb-4 lg:mb-6 border border-blue-200 dark:border-blue-500/30 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-500/10 dark:to-purple-500/10">
       <CardBody className="p-4">
-        <div className="flex items-center justify-start gap-3">
-          <div className="p-2 bg-blue-100 dark:bg-blue-500/20 rounded-lg flex-shrink-0">
+        <div className="flex items-start justify-start gap-3.5">
+          <div className="w-10 h-10 bg-blue-100 dark:bg-blue-500/20 rounded-lg flex-shrink-0 flex items-center justify-center mt-0.5">
             <svg
               aria-hidden="true"
               className="w-5 h-5 text-blue-600 dark:text-blue-400"
@@ -31,11 +31,11 @@ export const AnnouncementBanner = ({
               />
             </svg>
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm lg:text-base font-semibold text-blue-900 dark:text-blue-100 mb-1">
+          <div className="flex-1 min-w-0 pt-0.5">
+            <h3 className="text-base font-semibold leading-none text-blue-900 dark:text-blue-100 mb-1.5">
               公告
             </h3>
-            <p className="text-xs lg:text-sm text-blue-800 dark:text-blue-200 whitespace-pre-wrap break-words">
+            <p className="text-sm text-blue-800 dark:text-blue-200 whitespace-pre-wrap break-words leading-relaxed">
               {announcement.content}
             </p>
           </div>
