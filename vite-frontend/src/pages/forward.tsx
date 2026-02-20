@@ -1707,7 +1707,7 @@ export default function ForwardPage() {
             <>
               <Select
                 aria-label="筛选用户"
-                className="max-w-[150px]"
+                className="w-[130px] sm:w-[150px]"
                 size="sm"
                 variant="bordered"
                 selectedKeys={[filterUserId]}
@@ -1724,7 +1724,7 @@ export default function ForwardPage() {
 
               <Select
                 aria-label="筛选隧道"
-                className="max-w-[150px]"
+                className="w-[130px] sm:w-[150px]"
                 size="sm"
                 variant="bordered"
                 selectedKeys={[filterTunnelId]}
