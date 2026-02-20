@@ -25,6 +25,14 @@ import { Input } from "@/shadcn-bridge/heroui/input";
 import { Textarea } from "@/shadcn-bridge/heroui/input";
 import { Select, SelectItem } from "@/shadcn-bridge/heroui/select";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableColumn,
+  TableHeader,
+  TableRow,
+} from "@/shadcn-bridge/heroui/table";
+import {
   Modal,
   ModalContent,
   ModalHeader,
@@ -35,7 +43,6 @@ import { Chip } from "@/shadcn-bridge/heroui/chip";
 import { Spinner } from "@/shadcn-bridge/heroui/spinner";
 import { Switch } from "@/shadcn-bridge/heroui/switch";
 import { Alert } from "@/shadcn-bridge/heroui/alert";
-import { Accordion, AccordionItem } from "@/shadcn-bridge/heroui/accordion";
 import { Checkbox } from "@/shadcn-bridge/heroui/checkbox";
 import {
   createForward,
@@ -1516,8 +1523,6 @@ export default function ForwardPage() {
     return <PageLoadingState message="正在加载..." />;
   }
 
-  const userGroups = groupForwardsByUserAndTunnel();
-
   return (
     <div className="px-3 lg:px-6 py-8">
       {/* 页面头部 */}
@@ -1669,116 +1674,134 @@ export default function ForwardPage() {
 
       {/* 根据显示模式渲染不同内容 */}
       {viewMode === "grouped" ? (
-        /* 按用户和隧道分组的转发列表 */
-        userGroups.length > 0 ? (
-          <div className="space-y-6">
-            {userGroups.map((userGroup) => (
-              <Card
-                key={userGroup.userId || "unknown"}
-                className="shadow-sm border border-divider w-full overflow-hidden"
-              >
-                <CardHeader className="pb-2 md:pb-2">
-                  <div className="flex items-center justify-between w-full min-w-0">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center flex-shrink-0">
-                        <svg
-                          aria-hidden="true"
-                          className="w-5 h-5 text-primary"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            clipRule="evenodd"
-                            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                            fillRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h2 className="text-base font-medium text-foreground truncate max-w-[150px] sm:max-w-[250px] md:max-w-[350px] lg:max-w-[450px]">
-                          {userGroup.userName}
-                        </h2>
-                        <p className="text-xs text-default-500 truncate max-w-[150px] sm:max-w-[250px] md:max-w-[350px] lg:max-w-[450px]">
-                          {userGroup.tunnelGroups.length} 个隧道，
-                          {userGroup.tunnelGroups.reduce(
-                            (total, tg) => total + tg.forwards.length,
-                            0,
-                          )}{" "}
-                          个转发
-                        </p>
-                      </div>
-                    </div>
-                    <Chip
-                      className="text-xs flex-shrink-0 ml-2"
-                      color="primary"
-                      size="sm"
-                      variant="flat"
-                    >
-                      用户
-                    </Chip>
-                  </div>
-                </CardHeader>
+        sortedForwards.length > 0 ? (
+          <div className="overflow-hidden rounded-lg border border-divider bg-content1">
+            <Table aria-label="全部转发列表" classNames={{ wrapper: "rounded-none" }}>
+              <TableHeader>
+                {selectMode && <TableColumn className="w-14">选择</TableColumn>}
+                <TableColumn>用户</TableColumn>
+                <TableColumn>隧道</TableColumn>
+                <TableColumn>名称</TableColumn>
+                <TableColumn>入口</TableColumn>
+                <TableColumn>目标</TableColumn>
+                <TableColumn>策略</TableColumn>
+                <TableColumn>流量</TableColumn>
+                <TableColumn>状态</TableColumn>
+                <TableColumn className="text-right">操作</TableColumn>
+              </TableHeader>
+              <TableBody emptyContent="暂无转发配置" items={sortedForwards}>
+                {(forward) => {
+                  const statusDisplay = getStatusDisplay(forward.status);
+                  const strategyDisplay = getStrategyDisplay(forward.strategy);
 
-                <CardBody className="pt-0 md:pt-0">
-                  <Accordion className="px-0" variant="splitted">
-                    {userGroup.tunnelGroups.map((tunnelGroup) => (
-                      <AccordionItem
-                        key={tunnelGroup.tunnelId}
-                        aria-label={tunnelGroup.tunnelName}
-                        className="shadow-none border border-divider"
-                        title={
-                          <div className="flex items-center justify-between w-full min-w-0 pr-4">
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <div className="w-8 h-8 bg-success-100 dark:bg-success-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <svg
-                                  aria-hidden="true"
-                                  className="w-4 h-4 text-success"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                  />
-                                </svg>
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <h3 className="text-sm font-medium text-foreground truncate max-w-[120px] sm:max-w-[200px] md:max-w-[300px] lg:max-w-[400px]">
-                                  {tunnelGroup.tunnelName}
-                                </h3>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                              <Chip
-                                className="text-xs"
-                                size="sm"
-                                variant="flat"
-                              >
-                                {
-                                  tunnelGroup.forwards.filter(
-                                    (f) => f.serviceRunning,
-                                  ).length
-                                }
-                                /{tunnelGroup.forwards.length}
-                              </Chip>
-                            </div>
-                          </div>
-                        }
-                      >
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 p-4">
-                          {tunnelGroup.forwards.map((forward) =>
-                            renderForwardCard(forward, undefined),
-                          )}
+                  return (
+                    <TableRow key={forward.id}>
+                      {selectMode && (
+                        <TableCell>
+                          <Checkbox
+                            isSelected={selectedIds.has(forward.id)}
+                            onValueChange={() => toggleSelect(forward.id)}
+                          />
+                        </TableCell>
+                      )}
+                      <TableCell className="whitespace-nowrap">
+                        {forward.userName || "未知用户"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {forward.tunnelName}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap font-medium text-foreground">
+                        {forward.name}
+                      </TableCell>
+                      <TableCell className="max-w-[220px]">
+                        <button
+                          className={`w-full truncate rounded px-2 py-1 text-left font-mono text-xs text-foreground transition-colors ${
+                            hasMultipleAddresses(forward.inIp)
+                              ? "hover:bg-default-100"
+                              : ""
+                          }`}
+                          title={formatInAddress(forward.inIp, forward.inPort)}
+                          type="button"
+                          onClick={() =>
+                            showAddressModal(forward.inIp, forward.inPort, "入口端口")
+                          }
+                        >
+                          {formatInAddress(forward.inIp, forward.inPort)}
+                        </button>
+                      </TableCell>
+                      <TableCell className="max-w-[240px]">
+                        <button
+                          className={`w-full truncate rounded px-2 py-1 text-left font-mono text-xs text-foreground transition-colors ${
+                            hasMultipleAddresses(forward.remoteAddr)
+                              ? "hover:bg-default-100"
+                              : ""
+                          }`}
+                          title={formatRemoteAddress(forward.remoteAddr)}
+                          type="button"
+                          onClick={() =>
+                            showAddressModal(forward.remoteAddr, null, "目标地址")
+                          }
+                        >
+                          {formatRemoteAddress(forward.remoteAddr)}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        <Chip className="text-xs" size="sm" variant="flat">
+                          {strategyDisplay.text}
+                        </Chip>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <div className="flex flex-col gap-1 text-xs">
+                          <span>↑{formatFlow(forward.inFlow || 0)}</span>
+                          <span>↓{formatFlow(forward.outFlow || 0)}</span>
                         </div>
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
-                </CardBody>
-              </Card>
-            ))}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <Switch
+                            isDisabled={forward.status !== 1 && forward.status !== 0}
+                            isSelected={forward.serviceRunning}
+                            size="sm"
+                            onValueChange={() => handleServiceToggle(forward)}
+                          />
+                          <Chip className="text-xs" size="sm" variant="flat">
+                            {statusDisplay.text}
+                          </Chip>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-1.5">
+                          <Button
+                            color="primary"
+                            size="sm"
+                            variant="flat"
+                            onPress={() => handleEdit(forward)}
+                          >
+                            编辑
+                          </Button>
+                          <Button
+                            color="warning"
+                            size="sm"
+                            variant="flat"
+                            onPress={() => handleDiagnose(forward)}
+                          >
+                            诊断
+                          </Button>
+                          <Button
+                            color="danger"
+                            size="sm"
+                            variant="flat"
+                            onPress={() => handleDelete(forward)}
+                          >
+                            删除
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                }}
+              </TableBody>
+            </Table>
           </div>
         ) : (
           /* 空状态 */
