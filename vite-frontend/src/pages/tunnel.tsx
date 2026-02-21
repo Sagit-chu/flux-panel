@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
+import { AnimatedPage } from "@/components/animated-page";
+import { SearchBar } from "@/components/search-bar";
 import {
   DndContext,
   KeyboardSensor,
@@ -111,6 +113,8 @@ export default function TunnelPage() {
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const [tunnelOrder, setTunnelOrder] = useState<number[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   // 模态框状态
   const [modalOpen, setModalOpen] = useState(false);
@@ -597,7 +601,17 @@ export default function TunnelPage() {
   const sortedTunnels = useMemo((): Tunnel[] => {
     if (!tunnels || tunnels.length === 0) return [];
 
-    const sortedByDb = [...tunnels].sort((a, b) => {
+    let filteredTunnels = tunnels;
+
+    if (searchKeyword.trim()) {
+      const lowerKeyword = searchKeyword.toLowerCase();
+      filteredTunnels = filteredTunnels.filter(t =>
+        (t.name && t.name.toLowerCase().includes(lowerKeyword)) ||
+        (t.inIp && t.inIp.toLowerCase().includes(lowerKeyword))
+      );
+    }
+
+    const sortedByDb = [...filteredTunnels].sort((a, b) => {
       const aInx = a.inx ?? 0;
       const bInx = b.inx ?? 0;
 
@@ -610,7 +624,7 @@ export default function TunnelPage() {
       tunnelOrder.length > 0 &&
       sortedByDb.every((t) => t.inx === undefined || t.inx === 0)
     ) {
-      const tunnelMap = new Map(tunnels.map((t) => [t.id, t] as const));
+      const tunnelMap = new Map(filteredTunnels.map((t) => [t.id, t] as const));
       const localSorted: Tunnel[] = [];
 
       tunnelOrder.forEach((id) => {
@@ -619,7 +633,7 @@ export default function TunnelPage() {
         if (tunnel) localSorted.push(tunnel);
       });
 
-      tunnels.forEach((tunnel) => {
+      filteredTunnels.forEach((tunnel) => {
         if (!tunnelOrder.includes(tunnel.id)) {
           localSorted.push(tunnel);
         }
@@ -629,7 +643,7 @@ export default function TunnelPage() {
     }
 
     return sortedByDb;
-  }, [tunnels, tunnelOrder]);
+  }, [tunnels, tunnelOrder, searchKeyword]);
 
   const sortableTunnelIds = useMemo(
     () => sortedTunnels.map((t) => t.id),
@@ -671,10 +685,18 @@ export default function TunnelPage() {
   }
 
   return (
-    <div className="px-3 lg:px-6 py-8">
-      {/* 页面头部 */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex-1" />
+    <AnimatedPage className="px-3 lg:px-6 py-8">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-6 gap-3">
+        <div className="flex-1 max-w-sm flex items-center gap-2">
+          <SearchBar
+            isVisible={isSearchVisible}
+            placeholder="搜索隧道名称或IP"
+            value={searchKeyword}
+            onChange={setSearchKeyword}
+            onClose={() => setIsSearchVisible(false)}
+            onOpen={() => setIsSearchVisible(true)}
+          />
+        </div>
 
         <div className="flex items-center gap-2">
           <Button
@@ -2415,6 +2437,6 @@ export default function TunnelPage() {
           )}
         </ModalContent>
       </Modal>
-    </div>
+    </AnimatedPage>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { Button } from "@/shadcn-bridge/heroui/button";
 import {
@@ -335,21 +336,36 @@ export default function AdminLayout({
 
               return (
                 <li key={item.path}>
-                  <button
+                  <motion.button
                     className={`
                        w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left
-                       transition-colors duration-200 min-h-[44px]
-                       ${
-                         isActive
-                           ? "bg-primary-100 dark:bg-primary-600/20 text-primary-600 dark:text-primary-300"
-                           : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-900"
-                       }
+                       relative min-h-[44px]
+                       ${isActive
+                        ? "text-primary-600 dark:text-primary-300"
+                        : "text-gray-700 dark:text-gray-200"
+                      }
                      `}
+                    transition={{ duration: 0.15 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => handleMenuClick(item.path)}
                   >
-                    <div className="flex-shrink-0">{item.icon}</div>
-                    <span className="font-medium text-sm">{item.label}</span>
-                  </button>
+                    {isActive && (
+                      <motion.div
+                        className="absolute inset-0 rounded-lg bg-primary-100 dark:bg-primary-600/20"
+                        layoutId="sidebar-active"
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                    {!isActive && (
+                      <motion.div
+                        className="absolute inset-0 rounded-lg bg-gray-100 dark:bg-gray-900 opacity-0"
+                        transition={{ duration: 0.15 }}
+                        whileHover={{ opacity: 1 }}
+                      />
+                    )}
+                    <div className="flex-shrink-0 relative z-10">{item.icon}</div>
+                    <span className="font-medium text-sm relative z-10">{item.label}</span>
+                  </motion.button>
                 </li>
               );
             })}
@@ -476,9 +492,20 @@ export default function AdminLayout({
 
         {/* 主内容 */}
         <main
-          className={`flex-1 bg-gray-100 dark:bg-black ${isMobile ? "" : "overflow-y-auto"}`}
+          className={`flex-1 bg-gray-100 dark:bg-black overflow-hidden ${isMobile ? "" : "overflow-y-scroll"}`}
         >
-          {children}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              animate={{ opacity: 1, y: 0 }}
+              className="h-full"
+              exit={{ opacity: 0, y: -6 }}
+              initial={{ opacity: 0, y: 10 }}
+              transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 

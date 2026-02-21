@@ -85,7 +85,7 @@ function DropdownMenuSubContent({
   return (
     <DropdownMenuPrimitive.SubContent
       className={cn(
-        "z-50 min-w-32 overflow-hidden rounded-md border border-default-200 bg-white p-1 text-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out dark:bg-default-50",
+        "z-50 min-w-32 overflow-hidden rounded-md border border-default-200 bg-white p-1 text-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=top]:slide-in-from-bottom-2 data-[side=bottom]:slide-in-from-top-2 dark:bg-default-50",
         className,
       )}
       data-slot="dropdown-menu-sub-content"
@@ -103,7 +103,7 @@ function DropdownMenuContent({
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         className={cn(
-          "z-50 min-w-32 overflow-hidden rounded-md border border-default-200 bg-white p-1 text-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out dark:bg-default-50",
+          "z-50 min-w-32 overflow-hidden rounded-md border border-default-200 bg-white p-1 text-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=top]:slide-in-from-bottom-2 data-[side=bottom]:slide-in-from-top-2 dark:bg-default-50",
           className,
         )}
         data-slot="dropdown-menu-content"

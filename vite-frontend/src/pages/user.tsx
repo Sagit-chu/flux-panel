@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
+import { AnimatedPage, StaggerList, StaggerItem } from "@/components/animated-page";
 import { parseDate } from "@internationalized/date";
 
 import { Button } from "@/shadcn-bridge/heroui/button";
@@ -121,6 +122,7 @@ export default function UserPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [pagination, setPagination] = useState<PaginationType>({
     current: 1,
     size: 10,
@@ -609,42 +611,71 @@ export default function UserPage() {
   };
 
   return (
-    <div className="px-3 lg:px-6 py-8">
+    <AnimatedPage className="px-3 lg:px-6 py-8">
       {/* 页面头部 */}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex items-center gap-3" />
-
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div className="flex items-center gap-3 flex-1 max-w-md">
-            <Input
-              className="flex-1"
-              classNames={{
-                base: "bg-default-100",
-                input: "bg-transparent",
-                inputWrapper:
-                  "bg-default-100 border-2 border-default-200 hover:border-default-300 data-[hover=true]:border-default-300",
-              }}
-              placeholder="搜索用户名"
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-6 gap-3">
+        <div className="flex-1 max-w-sm flex items-center gap-2">
+          {!isSearchVisible ? (
             <Button
               isIconOnly
-              aria-label="搜索用户"
-              className="min-h-10 w-10"
-              color="primary"
-              variant="solid"
-              onPress={handleSearch}
+              aria-label="搜索"
+              className="text-default-600"
+              color="default"
+              size="sm"
+              variant="flat"
+              onPress={() => setIsSearchVisible(true)}
             >
               <SearchIcon className="w-4 h-4" />
             </Button>
-          </div>
-
-          <Button color="primary" variant="flat" onPress={handleAdd}>
-            新增
-          </Button>
+          ) : (
+            <div className="flex w-full items-center gap-2 animate-appearance-in">
+              <Input
+                autoFocus
+                classNames={{
+                  base: "bg-default-100",
+                  input: "bg-transparent",
+                  inputWrapper:
+                    "bg-default-100 border-2 border-default-200 hover:border-default-300 data-[hover=true]:border-default-300",
+                }}
+                placeholder="搜索用户名"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              />
+              <Button
+                isIconOnly
+                aria-label="关闭搜索"
+                className="text-default-600 shrink-0"
+                color="default"
+                size="sm"
+                variant="light"
+                onPress={() => {
+                  setIsSearchVisible(false);
+                  setSearchKeyword("");
+                }}
+              >
+                <svg
+                  aria-hidden="true"
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M6 18L18 6M6 6l12 12"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                  />
+                </svg>
+              </Button>
+            </div>
+          )}
         </div>
+
+        <Button color="primary" size="sm" variant="flat" onPress={handleAdd}>
+          新增
+        </Button>
       </div>
 
       {/* 用户列表 */}
@@ -662,7 +693,7 @@ export default function UserPage() {
           </CardBody>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+        <StaggerList className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
           {users.map((user) => {
             const userStatus = getUserStatus(user);
             const expStatus = user.expTime
@@ -678,173 +709,174 @@ export default function UserPage() {
                 : 0;
 
             return (
-              <Card
-                key={user.id}
-                className="shadow-sm border border-divider hover:shadow-md transition-shadow duration-200 overflow-hidden"
-              >
-                <CardHeader className="pb-2 md:pb-2">
-                  <div className="flex justify-between items-start w-full">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-foreground truncate text-sm">
-                        {user.name || user.user}
-                      </h3>
-                      <p className="text-xs text-default-500 truncate">
-                        @{user.user}
-                      </p>
+              <StaggerItem key={user.id}>
+                <Card
+                  className="shadow-sm border border-divider hover:shadow-md transition-shadow duration-200 overflow-hidden h-full"
+                >
+                  <CardHeader className="pb-2 md:pb-2">
+                    <div className="flex justify-between items-start w-full">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-foreground truncate text-sm">
+                          {user.name || user.user}
+                        </h3>
+                        <p className="text-xs text-default-500 truncate">
+                          @{user.user}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 ml-2">
+                        <Chip
+                          className="text-xs"
+                          color={userStatus.color}
+                          size="sm"
+                          variant="flat"
+                        >
+                          {userStatus.text}
+                        </Chip>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 ml-2">
-                      <Chip
-                        className="text-xs"
-                        color={userStatus.color}
-                        size="sm"
-                        variant="flat"
-                      >
-                        {userStatus.text}
-                      </Chip>
-                    </div>
-                  </div>
-                </CardHeader>
+                  </CardHeader>
 
-                <CardBody className="pt-0 pb-3 md:pt-0 md:pb-3">
-                  <div className="space-y-2">
-                    {/* 流量信息 */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-default-600">流量限制</span>
-                        <span className="font-medium text-xs">
-                          {formatFlow(user.flow, "gb")}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-default-600">已使用</span>
-                        <span className="font-medium text-xs text-danger">
-                          {formatFlow(usedFlow)}
-                        </span>
-                      </div>
-                      <Progress
-                        aria-label={`流量使用 ${flowPercent.toFixed(1)}%`}
-                        className="mt-1"
-                        color={
-                          flowPercent > 90
-                            ? "danger"
-                            : flowPercent > 70
-                              ? "warning"
-                              : "success"
-                        }
-                        size="sm"
-                        value={flowPercent}
-                      />
-                    </div>
-
-                    {/* 其他信息 */}
-                    <div className="space-y-1.5 pt-2 border-t border-divider">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-default-600">转发数量</span>
-                        <span className="font-medium text-xs">{user.num}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-default-600">重置日期</span>
-                        <span className="text-xs">
-                          {user.flowResetTime === 0
-                            ? "不重置"
-                            : `每月${user.flowResetTime}号`}
-                        </span>
-                      </div>
-                      {user.expTime && (
+                  <CardBody className="pt-0 pb-3 md:pt-0 md:pb-3">
+                    <div className="space-y-2">
+                      {/* 流量信息 */}
+                      <div className="space-y-1.5">
                         <div className="flex justify-between text-sm">
-                          <span className="text-default-600">过期时间</span>
-                          <div className="text-right">
-                            {expStatus && expStatus.color === "success" ? (
-                              <div className="text-xs">
-                                {formatDate(user.expTime)}
-                              </div>
-                            ) : (
-                              <Chip
-                                className="text-xs"
-                                color={expStatus?.color || "default"}
-                                size="sm"
-                                variant="flat"
-                              >
-                                {expStatus?.text || "未知状态"}
-                              </Chip>
-                            )}
-                          </div>
+                          <span className="text-default-600">流量限制</span>
+                          <span className="font-medium text-xs">
+                            {formatFlow(user.flow, "gb")}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-default-600">已使用</span>
+                          <span className="font-medium text-xs text-danger">
+                            {formatFlow(usedFlow)}
+                          </span>
+                        </div>
+                        <Progress
+                          aria-label={`流量使用 ${flowPercent.toFixed(1)}%`}
+                          className="mt-1"
+                          color={
+                            flowPercent > 90
+                              ? "danger"
+                              : flowPercent > 70
+                                ? "warning"
+                                : "success"
+                          }
+                          size="sm"
+                          value={flowPercent}
+                        />
+                      </div>
 
-                  <div className="space-y-1.5 mt-3">
-                    {/* 第一行：编辑和重置 */}
-                    <div className="flex gap-1.5">
-                      <Button
-                        className="flex-1 min-h-8"
-                        color="primary"
-                        size="sm"
-                        startContent={<EditIcon className="w-3 h-3" />}
-                        variant="flat"
-                        onPress={() => handleEdit(user)}
-                      >
-                        编辑
-                      </Button>
-                      <Button
-                        className="flex-1 min-h-8"
-                        color="warning"
-                        size="sm"
-                        startContent={
-                          <svg
-                            aria-hidden="true"
-                            className="w-3 h-3"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              clipRule="evenodd"
-                              d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                              fillRule="evenodd"
-                            />
-                          </svg>
-                        }
-                        variant="flat"
-                        onPress={() => handleResetFlow(user)}
-                      >
-                        重置
-                      </Button>
+                      {/* 其他信息 */}
+                      <div className="space-y-1.5 pt-2 border-t border-divider">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-default-600">转发数量</span>
+                          <span className="font-medium text-xs">{user.num}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-default-600">重置日期</span>
+                          <span className="text-xs">
+                            {user.flowResetTime === 0
+                              ? "不重置"
+                              : `每月${user.flowResetTime}号`}
+                          </span>
+                        </div>
+                        {user.expTime && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-default-600">过期时间</span>
+                            <div className="text-right">
+                              {expStatus && expStatus.color === "success" ? (
+                                <div className="text-xs">
+                                  {formatDate(user.expTime)}
+                                </div>
+                              ) : (
+                                <Chip
+                                  className="text-xs"
+                                  color={expStatus?.color || "default"}
+                                  size="sm"
+                                  variant="flat"
+                                >
+                                  {expStatus?.text || "未知状态"}
+                                </Chip>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {/* 第二行：权限和删除 */}
-                    <div className="flex gap-1.5">
-                      <Button
-                        className="flex-1 min-h-8"
-                        color="success"
-                        size="sm"
-                        startContent={<SettingsIcon className="w-3 h-3" />}
-                        variant="flat"
-                        onPress={() => handleManageTunnels(user)}
-                      >
-                        权限
-                      </Button>
-                      <Button
-                        className="flex-1 min-h-8"
-                        color="danger"
-                        size="sm"
-                        startContent={<DeleteIcon className="w-3 h-3" />}
-                        variant="flat"
-                        onPress={() => handleDelete(user)}
-                      >
-                        删除
-                      </Button>
+                    <div className="space-y-1.5 mt-3">
+                      {/* 第一行：编辑和重置 */}
+                      <div className="flex gap-1.5">
+                        <Button
+                          className="flex-1 min-h-8"
+                          color="primary"
+                          size="sm"
+                          startContent={<EditIcon className="w-3 h-3" />}
+                          variant="flat"
+                          onPress={() => handleEdit(user)}
+                        >
+                          编辑
+                        </Button>
+                        <Button
+                          className="flex-1 min-h-8"
+                          color="warning"
+                          size="sm"
+                          startContent={
+                            <svg
+                              aria-hidden="true"
+                              className="w-3 h-3"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                clipRule="evenodd"
+                                d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+                                fillRule="evenodd"
+                              />
+                            </svg>
+                          }
+                          variant="flat"
+                          onPress={() => handleResetFlow(user)}
+                        >
+                          重置
+                        </Button>
+                      </div>
+
+                      {/* 第二行：权限和删除 */}
+                      <div className="flex gap-1.5">
+                        <Button
+                          className="flex-1 min-h-8"
+                          color="success"
+                          size="sm"
+                          startContent={<SettingsIcon className="w-3 h-3" />}
+                          variant="flat"
+                          onPress={() => handleManageTunnels(user)}
+                        >
+                          权限
+                        </Button>
+                        <Button
+                          className="flex-1 min-h-8"
+                          color="danger"
+                          size="sm"
+                          startContent={<DeleteIcon className="w-3 h-3" />}
+                          variant="flat"
+                          onPress={() => handleDelete(user)}
+                        >
+                          删除
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </CardBody>
-              </Card>
+                  </CardBody>
+                </Card>
+              </StaggerItem>
             );
           })}
-        </div>
+        </StaggerList>
       )}
 
       {/* 用户表单模态框 */}
-      <Modal
+      < Modal
         backdrop="blur"
         isOpen={isUserModalOpen}
         placement="center"
@@ -1758,6 +1790,6 @@ export default function UserPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
-    </div>
+    </AnimatedPage>
   );
 }

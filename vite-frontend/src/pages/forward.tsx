@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
+import { AnimatedPage } from "@/components/animated-page";
+import { SearchBar } from "@/components/search-bar";
 import {
   DndContext,
   closestCenter,
@@ -119,24 +121,15 @@ interface ForwardForm {
   strategy: string;
 }
 
-// 添加分组接口
-interface UserGroup {
-  userId: number | null;
-  userName: string;
-  tunnelGroups: TunnelGroup[];
-}
 
-interface TunnelGroup {
-  tunnelId: number;
-  tunnelName: string;
-  forwards: Forward[];
-}
 
 export default function ForwardPage() {
   const [loading, setLoading] = useState(true);
   const [forwards, setForwards] = useState<Forward[]>([]);
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const isMobile = useMobileBreakpoint();
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   // 显示模式状态 - 从localStorage读取，默认为平铺显示
   const [viewMode, setViewMode] = useState<"grouped" | "direct">(() => {
@@ -233,21 +226,6 @@ export default function ForwardPage() {
     setViewMode(newMode);
     try {
       localStorage.setItem("forward-view-mode", newMode);
-
-      // 切换到直接显示模式时，初始化拖拽排序顺序
-      if (newMode === "direct") {
-        const currentUserId = JwtUtil.getUserIdFromToken();
-        const { order, fromDatabase } = buildForwardOrder(
-          forwards,
-          currentUserId,
-        );
-
-        setForwardOrder(order);
-
-        if (fromDatabase) {
-          saveOrder(FORWARD_ORDER_KEY, order);
-        }
-      }
     } catch { }
   };
 
@@ -270,18 +248,16 @@ export default function ForwardPage() {
         setForwards(forwardsData);
 
         // 初始化拖拽排序顺序
-        if (viewMode === "direct") {
-          const currentUserId = JwtUtil.getUserIdFromToken();
-          const { order, fromDatabase } = buildForwardOrder(
-            forwardsData,
-            currentUserId,
-          );
+        const currentUserId = JwtUtil.getUserIdFromToken();
+        const { order, fromDatabase } = buildForwardOrder(
+          forwardsData,
+          currentUserId,
+        );
 
-          setForwardOrder(order);
+        setForwardOrder(order);
 
-          if (fromDatabase) {
-            saveOrder(FORWARD_ORDER_KEY, order);
-          }
+        if (fromDatabase) {
+          saveOrder(FORWARD_ORDER_KEY, order);
         }
       } else {
         toast.error(forwardsRes.msg || "获取转发列表失败");
@@ -298,52 +274,7 @@ export default function ForwardPage() {
     }
   };
 
-  // 按用户和隧道分组转发数据
-  const groupForwardsByUserAndTunnel = (): UserGroup[] => {
-    const userMap = new Map<string, UserGroup>();
 
-    // 获取排序后的转发列表
-    sortedForwards.forEach((forward) => {
-      const userKey = forward.userId ? forward.userId.toString() : "unknown";
-      const userName = forward.userName || "未知用户";
-
-      if (!userMap.has(userKey)) {
-        userMap.set(userKey, {
-          userId: forward.userId || null,
-          userName,
-          tunnelGroups: [],
-        });
-      }
-
-      const userGroup = userMap.get(userKey)!;
-      let tunnelGroup = userGroup.tunnelGroups.find(
-        (tg) => tg.tunnelId === forward.tunnelId,
-      );
-
-      if (!tunnelGroup) {
-        tunnelGroup = {
-          tunnelId: forward.tunnelId,
-          tunnelName: forward.tunnelName,
-          forwards: [],
-        };
-        userGroup.tunnelGroups.push(tunnelGroup);
-      }
-
-      tunnelGroup.forwards.push(forward);
-    });
-
-    // 排序：先按用户名，再按隧道名
-    const result = Array.from(userMap.values());
-
-    result.sort((a, b) => a.userName.localeCompare(b.userName));
-    result.forEach((userGroup) => {
-      userGroup.tunnelGroups.sort((a, b) =>
-        a.tunnelName.localeCompare(b.tunnelName),
-      );
-    });
-
-    return result;
-  };
 
   // 表单验证
   const validateForm = (): boolean => {
@@ -720,26 +651,10 @@ export default function ForwardPage() {
     setExportLoading(true);
 
     try {
-      // 根据当前显示模式获取要导出的转发列表
-      let forwardsToExport: Forward[] = [];
-
-      if (viewMode === "grouped") {
-        // 分组模式下，获取指定隧道的转发
-        const userGroups = groupForwardsByUserAndTunnel();
-
-        forwardsToExport = userGroups.flatMap((userGroup) =>
-          userGroup.tunnelGroups
-            .filter(
-              (tunnelGroup) => tunnelGroup.tunnelId === selectedTunnelForExport,
-            )
-            .flatMap((tunnelGroup) => tunnelGroup.forwards),
-        );
-      } else {
-        // 直接显示模式下，过滤指定隧道的转发
-        forwardsToExport = sortedForwards.filter(
-          (forward) => forward.tunnelId === selectedTunnelForExport,
-        );
-      }
+      // 获取要导出的转发列表
+      const forwardsToExport = sortedForwards.filter(
+        (forward) => forward.tunnelId === selectedTunnelForExport,
+      );
 
       if (forwardsToExport.length === 0) {
         toast.error("所选隧道没有转发数据");
@@ -1181,24 +1096,24 @@ export default function ForwardPage() {
       return [];
     }
 
-    // 在平铺模式下，只显示当前用户的转发
     let filteredForwards = forwards;
 
-    if (viewMode === "direct") {
-      if (tokenUserId !== null) {
-        filteredForwards = forwards.filter(
-          (forward) => forward.userId === tokenUserId,
-        );
-      }
-    } else if (viewMode === "grouped") {
-      if (filterUserId !== "all") {
-        const targetUserId = parseInt(filterUserId);
-        filteredForwards = filteredForwards.filter(f => f.userId === targetUserId || (targetUserId === 0 && !f.userId));
-      }
-      if (filterTunnelId !== "all") {
-        const targetTunnelId = parseInt(filterTunnelId);
-        filteredForwards = filteredForwards.filter(f => f.tunnelId === targetTunnelId);
-      }
+    if (filterUserId !== "all") {
+      const targetUserId = parseInt(filterUserId);
+      filteredForwards = filteredForwards.filter(f => f.userId === targetUserId || (targetUserId === 0 && !f.userId));
+    }
+    if (filterTunnelId !== "all") {
+      const targetTunnelId = parseInt(filterTunnelId);
+      filteredForwards = filteredForwards.filter(f => f.tunnelId === targetTunnelId);
+    }
+
+    if (searchKeyword.trim()) {
+      const lowerKeyword = searchKeyword.toLowerCase();
+      filteredForwards = filteredForwards.filter(f =>
+        (f.name && f.name.toLowerCase().includes(lowerKeyword)) ||
+        (f.remoteAddr && f.remoteAddr.toLowerCase().includes(lowerKeyword)) ||
+        (f.userName && f.userName.toLowerCase().includes(lowerKeyword))
+      );
     }
 
     // 确保过滤后的转发列表有效
@@ -1242,7 +1157,7 @@ export default function ForwardPage() {
     }
 
     return sortedByDb;
-  }, [forwards, forwardOrder, viewMode, tokenUserId, filterUserId, filterTunnelId]);
+  }, [forwards, forwardOrder, viewMode, tokenUserId, filterUserId, filterTunnelId, searchKeyword]);
 
   const sortableForwardIds = useMemo(
     () => sortedForwards.map((f) => f.id).filter((id) => id > 0),
@@ -1288,7 +1203,7 @@ export default function ForwardPage() {
   }, [forwards]);
 
   // 可拖拽的表格行组件
-  const SortableTableRow = ({ forward, selectMode, selectedIds, toggleSelect, getStrategyDisplay, formatInAddress, formatRemoteAddress, handleServiceToggle, handleEdit, handleDelete, handleDiagnose, showAddressModal, hasMultipleAddresses }: any) => {
+  const SortableTableRow = ({ forward, selectMode, selectedIds, toggleSelect, getStrategyDisplay, formatInAddress, formatRemoteAddress, handleServiceToggle, handleEdit, handleDelete, handleDiagnose, showAddressModal, hasMultipleAddresses, formatFlow }: any) => {
     const {
       attributes,
       listeners,
@@ -1385,6 +1300,11 @@ export default function ForwardPage() {
           >
             {strategyDisplay.text}
           </Chip>
+        </TableCell>
+        <TableCell className="whitespace-nowrap">
+          <span className="text-sm font-medium text-default-600 font-mono">
+            {formatFlow((forward.inFlow || 0) + (forward.outFlow || 0))}
+          </span>
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-2.5 whitespace-nowrap">
@@ -1700,42 +1620,49 @@ export default function ForwardPage() {
   }
 
   return (
-    <div className="px-3 lg:px-6 py-8">
+    <AnimatedPage className="px-3 lg:px-6 py-8">
       {/* 页面头部 */}
-      <div className="flex items-center justify-between mb-6 gap-2">
-        <div className="flex-1"></div>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-6 gap-3">
+        <div className="flex-1 max-w-sm flex items-center gap-2">
+          <SearchBar
+            isVisible={isSearchVisible}
+            placeholder="搜索转发名称、地址或用户名"
+            value={searchKeyword}
+            onChange={setSearchKeyword}
+            onClose={() => setIsSearchVisible(false)}
+            onOpen={() => setIsSearchVisible(true)}
+          />
+        </div>
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-          {/* 筛选按钮 (仅在分组视图显示) */}
-          {viewMode === "grouped" && (
-            <Button
-              isIconOnly
-              aria-label="筛选条件"
-              className={filterUserId !== "all" || filterTunnelId !== "all" ? "bg-primary/20 text-primary relative" : "text-default-600 relative"}
-              color={filterUserId !== "all" || filterTunnelId !== "all" ? "primary" : "default"}
-              size="sm"
-              title="筛选条件"
-              variant="flat"
-              onPress={() => setIsFilterModalOpen(true)}
+          {/* 筛选按钮 */}
+          <Button
+            isIconOnly
+            aria-label="筛选条件"
+            className={filterUserId !== "all" || filterTunnelId !== "all" ? "bg-primary/20 text-primary relative" : "text-default-600 relative"}
+            color={filterUserId !== "all" || filterTunnelId !== "all" ? "primary" : "default"}
+            size="sm"
+            title="筛选条件"
+            variant="flat"
+            onPress={() => setIsFilterModalOpen(true)}
+          >
+            <svg
+              aria-hidden="true"
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <svg
-                aria-hidden="true"
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-                />
-              </svg>
-              {(filterUserId !== "all" || filterTunnelId !== "all") && (
-                <span className="absolute top-1.5 right-1.5 flex h-1.5 w-1.5 rounded-full bg-primary" />
-              )}
-            </Button>
-          )}
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+              />
+            </svg>
+            {(filterUserId !== "all" || filterTunnelId !== "all") && (
+              <span className="absolute top-1.5 right-1.5 flex h-1.5 w-1.5 rounded-full bg-primary" />
+            )}
+          </Button>
           {/* 显示模式切换按钮 */}
           <Button
             isIconOnly
@@ -1905,6 +1832,7 @@ export default function ForwardPage() {
                   <TableColumn>入口</TableColumn>
                   <TableColumn>目标</TableColumn>
                   <TableColumn>策略</TableColumn>
+                  <TableColumn>总流量</TableColumn>
                   <TableColumn>状态</TableColumn>
                   <TableColumn className="text-right">操作</TableColumn>
                 </TableHeader>
@@ -1925,6 +1853,7 @@ export default function ForwardPage() {
                         handleDiagnose={handleDiagnose}
                         showAddressModal={showAddressModal}
                         hasMultipleAddresses={hasMultipleAddresses}
+                        formatFlow={formatFlow}
                       />
                     </SortableContext>
                   )}
@@ -3185,6 +3114,6 @@ export default function ForwardPage() {
           )}
         </ModalContent>
       </Modal>
-    </div>
+    </AnimatedPage>
   );
 }
