@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import toast from "react-hot-toast";
+import { AnimatedPage } from "@/components/animated-page";
+import { SearchBar } from "@/components/search-bar";
 import {
   DndContext,
   KeyboardSensor,
@@ -57,7 +59,6 @@ import {
   getRemoteSyncErrorMessage,
 } from "@/pages/node/display";
 import { tryCopyInstallCommand } from "@/pages/node/install-command";
-import { SearchIcon } from "@/components/icons";
 import { buildNodeSystemInfo } from "@/pages/node/system-info";
 import { useNodeOfflineTimers } from "@/pages/node/use-node-offline-timers";
 import { useNodeRealtime } from "@/pages/node/use-node-realtime";
@@ -1049,64 +1050,17 @@ export default function NodePage() {
   );
 
   return (
-    <div className="px-3 lg:px-6 py-8">
+    <AnimatedPage className="px-3 lg:px-6 py-8">
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-6 gap-3">
         <div className="flex-1 max-w-sm flex items-center gap-2">
-          {!isSearchVisible ? (
-            <Button
-              isIconOnly
-              aria-label="搜索"
-              className="text-default-600"
-              color="default"
-              size="sm"
-              variant="flat"
-              onPress={() => setIsSearchVisible(true)}
-            >
-              <SearchIcon className="w-4 h-4" />
-            </Button>
-          ) : (
-            <div className="flex w-full items-center gap-2 animate-appearance-in">
-              <Input
-                autoFocus
-                classNames={{
-                  base: "bg-default-100",
-                  input: "bg-transparent",
-                  inputWrapper:
-                    "bg-default-100 border-2 border-default-200 hover:border-default-300 data-[hover=true]:border-default-300",
-                }}
-                placeholder="搜索节点名称或IP"
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-              />
-              <Button
-                isIconOnly
-                aria-label="关闭搜索"
-                className="text-default-600 shrink-0"
-                color="default"
-                size="sm"
-                variant="light"
-                onPress={() => {
-                  setIsSearchVisible(false);
-                  setSearchKeyword("");
-                }}
-              >
-                <svg
-                  aria-hidden="true"
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M6 18L18 6M6 6l12 12"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                  />
-                </svg>
-              </Button>
-            </div>
-          )}
+          <SearchBar
+            isVisible={isSearchVisible}
+            placeholder="搜索节点名称或IP"
+            value={searchKeyword}
+            onChange={setSearchKeyword}
+            onClose={() => setIsSearchVisible(false)}
+            onOpen={() => setIsSearchVisible(true)}
+          />
         </div>
 
         <div className="flex gap-2 items-center">
@@ -2168,6 +2122,6 @@ export default function NodePage() {
           )}
         </ModalContent>
       </Modal>
-    </div>
+    </AnimatedPage>
   );
 }

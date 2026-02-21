@@ -1,5 +1,6 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { AnimatedPage } from "@/components/animated-page";
 
 import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
 import { Button } from "@/shadcn-bridge/heroui/button";
@@ -524,7 +525,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="px-3 lg:px-6 py-2 lg:py-4">
+    <AnimatedPage className="px-3 lg:px-6 py-2 lg:py-4">
       {announcement && <AnnouncementBanner announcement={announcement} />}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6 lg:mb-8">
         <MetricCard
@@ -978,6 +979,6 @@ export default function DashboardPage() {
           </ModalBody>
         </ModalContent>
       </Modal>
-    </div>
+    </AnimatedPage>
   );
 }

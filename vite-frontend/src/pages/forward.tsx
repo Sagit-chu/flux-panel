@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
+import { AnimatedPage } from "@/components/animated-page";
+import { SearchBar } from "@/components/search-bar";
 import {
   DndContext,
   closestCenter,
@@ -76,7 +78,6 @@ import {
   executeForwardBatchToggleService,
 } from "@/pages/forward/batch-actions";
 import { buildForwardOrder, FORWARD_ORDER_KEY } from "@/pages/forward/order";
-import { SearchIcon } from "@/components/icons";
 import { PageLoadingState } from "@/components/page-state";
 import { useMobileBreakpoint } from "@/hooks/useMobileBreakpoint";
 import { saveOrder } from "@/utils/order-storage";
@@ -1619,65 +1620,18 @@ export default function ForwardPage() {
   }
 
   return (
-    <div className="px-3 lg:px-6 py-8">
+    <AnimatedPage className="px-3 lg:px-6 py-8">
       {/* 页面头部 */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-6 gap-3">
         <div className="flex-1 max-w-sm flex items-center gap-2">
-          {!isSearchVisible ? (
-            <Button
-              isIconOnly
-              aria-label="搜索"
-              className="text-default-600"
-              color="default"
-              size="sm"
-              variant="flat"
-              onPress={() => setIsSearchVisible(true)}
-            >
-              <SearchIcon className="w-4 h-4" />
-            </Button>
-          ) : (
-            <div className="flex w-full items-center gap-2 animate-appearance-in">
-              <Input
-                autoFocus
-                classNames={{
-                  base: "bg-default-100",
-                  input: "bg-transparent",
-                  inputWrapper:
-                    "bg-default-100 border-2 border-default-200 hover:border-default-300 data-[hover=true]:border-default-300",
-                }}
-                placeholder="搜索转发名称、地址或用户名"
-                value={searchKeyword}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-              />
-              <Button
-                isIconOnly
-                aria-label="关闭搜索"
-                className="text-default-600 shrink-0"
-                color="default"
-                size="sm"
-                variant="light"
-                onPress={() => {
-                  setIsSearchVisible(false);
-                  setSearchKeyword("");
-                }}
-              >
-                <svg
-                  aria-hidden="true"
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M6 18L18 6M6 6l12 12"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                  />
-                </svg>
-              </Button>
-            </div>
-          )}
+          <SearchBar
+            isVisible={isSearchVisible}
+            placeholder="搜索转发名称、地址或用户名"
+            value={searchKeyword}
+            onChange={setSearchKeyword}
+            onClose={() => setIsSearchVisible(false)}
+            onOpen={() => setIsSearchVisible(true)}
+          />
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
           {/* 筛选按钮 */}
@@ -3160,6 +3114,6 @@ export default function ForwardPage() {
           )}
         </ModalContent>
       </Modal>
-    </div>
+    </AnimatedPage>
   );
 }

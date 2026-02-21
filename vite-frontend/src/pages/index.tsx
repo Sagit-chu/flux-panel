@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Turnstile } from "@marsidev/react-turnstile";
+import { motion } from "framer-motion";
 
 import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
 import { Input } from "@/shadcn-bridge/heroui/input";
@@ -152,7 +153,12 @@ export default function IndexPage() {
   return (
     <DefaultLayout>
       <section className="flex flex-col items-center justify-center gap-4 py-4 sm:py-8 md:py-10 pb-20 min-h-[calc(100dvh-120px)] sm:min-h-[calc(100dvh-200px)]">
-        <div className="w-full max-w-md px-4 sm:px-0">
+        <motion.div
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          className="w-full max-w-md px-4 sm:px-0"
+          initial={{ opacity: 0, y: 24, scale: 0.97 }}
+          transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+        >
           <Card className="w-full">
             <CardHeader className="pb-0 pt-6 px-6 flex-col items-center">
               <h1 className={title({ size: "sm" })}>登陆</h1>
@@ -203,7 +209,7 @@ export default function IndexPage() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </motion.div>
 
         {/* 版权信息 - 固定在底部，不占据布局空间 */}
 
@@ -253,9 +259,9 @@ export default function IndexPage() {
                     theme: (document.documentElement.classList.contains(
                       "dark",
                     ) ||
-                    document.documentElement.getAttribute("data-theme") ===
+                      document.documentElement.getAttribute("data-theme") ===
                       "dark" ||
-                    window.matchMedia("(prefers-color-scheme: dark)").matches
+                      window.matchMedia("(prefers-color-scheme: dark)").matches
                       ? "dark"
                       : "light") as "light" | "dark" | "auto",
                   }}
