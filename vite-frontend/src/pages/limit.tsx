@@ -27,6 +27,7 @@ import {
   getTunnelList,
 } from "@/api";
 import { PageLoadingState } from "@/components/page-state";
+import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 
 interface SpeedLimitRule {
   id: number;
@@ -57,7 +58,10 @@ export default function LimitPage() {
   const [loading, setLoading] = useState(true);
   const [rules, setRules] = useState<SpeedLimitRule[]>([]);
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
-  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchKeyword, setSearchKeyword] = useLocalStorageState(
+    "limit-search-keyword",
+    "",
+  );
   const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   const filteredRules = useMemo(() => {
