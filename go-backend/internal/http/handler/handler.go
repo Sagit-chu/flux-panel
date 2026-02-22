@@ -988,10 +988,21 @@ func (h *Handler) captchaEnabled() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if cfg == nil {
+	if cfg == nil || !strings.EqualFold(cfg.Value, "true") {
 		return false, nil
 	}
-	return strings.EqualFold(cfg.Value, "true"), nil
+
+	// captcha_enabled=true, but we need to verify cloudflare_secret_key is configured
+	// If secret key is not configured, treat captcha as disabled to avoid blocking login
+	secretKey, err := h.repo.GetConfigByName("cloudflare_secret_key")
+	if err != nil {
+		return false, err
+	}
+	if secretKey == nil || strings.TrimSpace(secretKey.Value) == "" {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (h *Handler) markCaptchaToken(token string) {
