@@ -207,7 +207,7 @@ export function ModalFooter({
   return (
     <div
       className={cn(
-        "mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        "mt-4 flex flex-wrap justify-end gap-2",
         context?.classNames?.footer,
         className,
       )}
