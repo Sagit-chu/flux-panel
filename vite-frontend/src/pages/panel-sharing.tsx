@@ -674,7 +674,7 @@ export default function PanelSharingPage() {
       </Tabs>
 
       {/* Create Share Modal */}
-      <Modal isOpen={createShareOpen} onClose={() => setCreateShareOpen(false)}>
+      <Modal isOpen={createShareOpen} onClose={() => setCreateShareOpen(false)} scrollBehavior="inside">
         <ModalContent>
           <ModalHeader>创建分享</ModalHeader>
           <ModalBody>
@@ -777,7 +777,7 @@ export default function PanelSharingPage() {
       </Modal>
 
       {/* Edit Share Modal */}
-      <Modal isOpen={editShareOpen} onClose={() => setEditShareOpen(false)}>
+      <Modal isOpen={editShareOpen} onClose={() => setEditShareOpen(false)} scrollBehavior="inside">
         <ModalContent>
           <ModalHeader>编辑分享</ModalHeader>
           <ModalBody>
