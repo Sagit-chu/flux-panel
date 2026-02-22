@@ -1188,13 +1188,16 @@ export default function ForwardPage() {
     } = useSortable({ id: forward.id });
 
     const style: React.CSSProperties = {
-      transform: transform ? CSS.Transform.toString(transform) : undefined,
+      transform: transform
+        ? CSS.Transform.toString({
+            ...transform,
+            x: Math.round(transform.x),
+            y: Math.round(transform.y),
+          })
+        : undefined,
       transition: isDragging ? undefined : transition || undefined,
       opacity: isDragging ? 0.5 : 1,
-      willChange: "transform",
-      backfaceVisibility: "hidden",
-      WebkitFontSmoothing: "antialiased",
-      MozOsxFontSmoothing: "grayscale",
+      willChange: isDragging ? "transform" : undefined,
     };
 
     return (
@@ -1246,7 +1249,13 @@ export default function ForwardPage() {
     } = useSortable({ id: forward.id });
 
     const style = {
-      transform: transform ? CSS.Transform.toString(transform) : undefined,
+      transform: transform
+        ? CSS.Transform.toString({
+            ...transform,
+            x: Math.round(transform.x),
+            y: Math.round(transform.y),
+          })
+        : undefined,
       transition: isDragging ? undefined : transition || undefined,
       opacity: isDragging ? 0.5 : 1,
       backgroundColor: isDragging ? "var(--nextui-default-100)" : undefined,
