@@ -666,11 +666,14 @@ export default function TunnelPage() {
       isDragging,
     } = useSortable({ id });
 
-    const style = {
+    const style: React.CSSProperties = {
       transform: transform ? CSS.Transform.toString(transform) : undefined,
       transition: isDragging ? undefined : transition || undefined,
       opacity: isDragging ? 0.5 : 1,
       willChange: "transform",
+      backfaceVisibility: "hidden",
+      WebkitFontSmoothing: "antialiased",
+      MozOsxFontSmoothing: "grayscale",
     };
 
     return (
