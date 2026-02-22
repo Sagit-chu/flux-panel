@@ -80,6 +80,7 @@ import {
 import { buildForwardOrder, FORWARD_ORDER_KEY } from "@/pages/forward/order";
 import { PageLoadingState } from "@/components/page-state";
 import { useMobileBreakpoint } from "@/hooks/useMobileBreakpoint";
+import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { saveOrder } from "@/utils/order-storage";
 import { JwtUtil } from "@/utils/jwt";
 
@@ -126,7 +127,10 @@ export default function ForwardPage() {
   const [forwards, setForwards] = useState<Forward[]>([]);
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const isMobile = useMobileBreakpoint();
-  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchKeyword, setSearchKeyword] = useLocalStorageState(
+    "forward-search-keyword",
+    "",
+  );
   const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   // 显示模式状态 - 从localStorage读取，默认为平铺显示
@@ -135,14 +139,16 @@ export default function ForwardPage() {
       const savedMode = localStorage.getItem("forward-view-mode");
 
       return (savedMode as "grouped" | "direct") || "direct";
-    } catch (e) {
+    } catch {
       return "direct";
     }
   });
 
   // 筛选状态
-  const [filterUserId, setFilterUserId] = useState<string>("all");
-  const [filterTunnelId, setFilterTunnelId] = useState<string>("all");
+  const [filterUserId, setFilterUserId, resetFilterUserId] =
+    useLocalStorageState<string>("forward-filter-user-id", "all");
+  const [filterTunnelId, setFilterTunnelId, resetFilterTunnelId] =
+    useLocalStorageState<string>("forward-filter-tunnel-id", "all");
 
   // 拖拽排序相关状态
   const [forwardOrder, setForwardOrder] = useState<number[]>([]);
@@ -3218,8 +3224,8 @@ export default function ForwardPage() {
                   color="default"
                   variant="flat"
                   onPress={() => {
-                    setFilterUserId("all");
-                    setFilterTunnelId("all");
+                    resetFilterUserId();
+                    resetFilterTunnelId();
                   }}
                 >
                   重置

@@ -65,6 +65,7 @@ import {
   SettingsIcon,
 } from "@/components/icons";
 import { PageLoadingState } from "@/components/page-state";
+import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 
 // 工具函数
 const formatFlow = (value: number, unit: string = "bytes"): string => {
@@ -125,7 +126,10 @@ export default function UserPage() {
   // 状态管理
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchKeyword, setSearchKeyword] = useLocalStorageState(
+    "user-search-keyword",
+    "",
+  );
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [pagination, setPagination] = useState<PaginationType>({
     current: 1,

@@ -1,7 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
-import { AnimatedPage } from "@/components/animated-page";
-import { SearchBar } from "@/components/search-bar";
 import {
   DndContext,
   KeyboardSensor,
@@ -19,6 +17,9 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+
+import { SearchBar } from "@/components/search-bar";
+import { AnimatedPage } from "@/components/animated-page";
 import { Card, CardBody, CardHeader } from "@/shadcn-bridge/heroui/card";
 import { Button } from "@/shadcn-bridge/heroui/button";
 import { Input, Textarea } from "@/shadcn-bridge/heroui/input";
@@ -58,6 +59,7 @@ import {
   getTunnelTypeDisplay,
   validateTunnelForm,
 } from "@/pages/tunnel/form";
+import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { loadStoredOrder, saveOrder } from "@/utils/order-storage";
 import { extractApiErrorMessage } from "@/api/error-message";
 
@@ -112,7 +114,10 @@ export default function TunnelPage() {
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const [tunnelOrder, setTunnelOrder] = useState<number[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
-  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchKeyword, setSearchKeyword] = useLocalStorageState(
+    "tunnel-search-keyword",
+    "",
+  );
   const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   // 模态框状态
@@ -604,9 +609,11 @@ export default function TunnelPage() {
 
     if (searchKeyword.trim()) {
       const lowerKeyword = searchKeyword.toLowerCase();
-      filteredTunnels = filteredTunnels.filter(t =>
-        (t.name && t.name.toLowerCase().includes(lowerKeyword)) ||
-        (t.inIp && t.inIp.toLowerCase().includes(lowerKeyword))
+
+      filteredTunnels = filteredTunnels.filter(
+        (t) =>
+          (t.name && t.name.toLowerCase().includes(lowerKeyword)) ||
+          (t.inIp && t.inIp.toLowerCase().includes(lowerKeyword)),
       );
     }
 
