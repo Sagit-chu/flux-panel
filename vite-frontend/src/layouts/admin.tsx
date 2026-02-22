@@ -533,7 +533,7 @@ export default function AdminLayout({
 
         {/* 主内容 */}
         <main
-          className={`flex-1 bg-gray-100 dark:bg-black overflow-hidden ${isMobile ? "" : "overflow-y-scroll"}`}
+          className="flex-1 bg-gray-100 dark:bg-black overflow-y-auto"
         >
           <AnimatePresence mode="wait">
             <motion.div
